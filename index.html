@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 :root{
   --bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#242424;--bg4:#2e2e2e;
   --border:#333;--border2:#444;--text:#f0f0f0;--text2:#aaa;--text3:#666;
@@ -107,6 +108,12 @@ h1{font-size:22px;font-weight:600;letter-spacing:.2px;margin-top:4px;color:var(-
 .btn-sec.spinning i{animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ===== ver como ===== */
+.vc-barra{background:var(--yellow);color:#111;padding:9px 16px;font-size:13px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:40}
+.vc-barra[hidden]{display:none}
+.vc-barra button{background:#111;color:var(--yellow);border:none;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.vc-sel{background:var(--bg2);border:1px solid var(--border2);color:var(--text2);border-radius:var(--radius);padding:7px 8px;font-size:12px;font-family:var(--mono);max-width:200px}
+.vc-sel[hidden]{display:none}
 /* ===== modal usuarios ===== */
 .u-barra{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:4px 0 14px}
 .u-barra input[type=search]{flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);padding:9px 12px;font-size:14px}
@@ -197,6 +204,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
 
 <!-- ===== APP ===== -->
 <div class="app">
+  <div class="vc-barra" id="vc-barra" hidden role="status"></div>
   <div class="header">
     <div>
       <div class="eyebrow"><span class="pulse"></span> SPL / SPOTSLINE · SISTEMAS DE GESTIÓN</div>
@@ -205,6 +213,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     </div>
     <div class="usuario">
       <span class="nombre" id="u-nombre"></span>
+      <select class="vc-sel" id="vc-sel" hidden aria-label="Ver la portada como otro usuario"><option value="">Ver como… (mi vista)</option></select>
       <button class="btn-sec amarillo" id="btn-permisos" hidden><i class="ti ti-users"></i> Usuarios</button>
       <button class="btn-sec" onclick="Portal.salir()"><i class="ti ti-logout"></i> Salir</button>
     </div>
@@ -440,24 +449,54 @@ async function entrar(session, tipo){
     document.getElementById('sinacceso-txt').textContent='No se pudieron leer los permisos ('+error.message+'). Falta correr setup_portal.sql en Supabase.';
     return;
   }
-  const lista=paneles||[];
+  let lista=paneles||[];
   ES_ADMIN = !!perfil && perfil.rol==='admin' && perfil.activo!==false;
+  const sim = ES_ADMIN ? leerSimulacion() : null;
+  if(!ES_ADMIN) borrarSimulacion();
+  if(sim) lista = sim.paneles;
   VISIBLES = PANELS.filter(p=>lista.includes(p.id));
-  if(!VISIBLES.length){ mostrar('sinacceso'); return; }
+  if(!VISIBLES.length && !sim){ mostrar('sinacceso'); return; }
 
   document.getElementById('u-nombre').innerHTML='Hola, <b>'+esc((perfil&&perfil.nombre)||session.user.email)+'</b>';
-  document.getElementById('btn-permisos').hidden=!ES_ADMIN;
+  document.getElementById('btn-permisos').hidden=!ES_ADMIN || !!sim;
+  if(ES_ADMIN) prepararVerComo(sim);
   const volver=new URLSearchParams(location.search).get('volver');
   if(volver && /^\/[A-Za-z0-9_\-]/.test(volver) && !volver.startsWith('//')){ location.replace(volver); return; }
   mostrar('ok');
   renderStatusRail(); renderEntityFilter(); renderCards(); loadAll();
-  // Registra el ingreso en el mismo historial que el Panel de Ventas (si la función existe)
-  sb.rpc('registrar_ingreso',{p_tipo:tipo, p_dispositivo:/Mobi|Android/i.test(navigator.userAgent)?'Celular':'PC',
-    p_user_agent:navigator.userAgent.slice(0,400)}).then(({error})=>{ if(error) console.warn('[Ingresos]',error.message); });
+  if(sim && !VISIBLES.length) document.getElementById('grid').innerHTML='<div class="vacio">Este usuario no tiene ningún panel habilitado: al entrar vería el aviso "Sin paneles asignados".</div>';
+}
+
+/* ---------- Ver como otro usuario (solo administradores) ----------
+   Simulación: muestra las tarjetas que vería esa persona. Los datos y los paneles
+   se siguen abriendo con tu sesión de administrador. */
+const SIM_KEY='portal_ver_como';
+function leerSimulacion(){ try{ return JSON.parse(sessionStorage.getItem(SIM_KEY)||'null'); }catch(e){ return null; } }
+function borrarSimulacion(){ try{ sessionStorage.removeItem(SIM_KEY); }catch(e){} }
+async function prepararVerComo(sim){
+  const sel=document.getElementById('vc-sel');
+  const {data,error}=await sb.rpc('portal_listar_usuarios');
+  if(error||!data) return;
+  const otros=data.filter(u=>u.activo && u.rol!=='admin');
+  sel.innerHTML='<option value="">Ver como… (mi vista)</option>'+otros.map(u=>`<option value="${esc(u.user_id)}">${esc(u.nombre||u.email)}</option>`).join('');
+  sel.hidden=!otros.length;
+  if(sim) sel.value=sim.id;
+  sel.onchange=()=>{
+    const u=otros.find(x=>x.user_id===sel.value);
+    if(!u){ borrarSimulacion(); location.reload(); return; }
+    try{ sessionStorage.setItem(SIM_KEY, JSON.stringify({id:u.user_id, nombre:u.nombre||u.email, paneles:u.paneles||['ventas']})); }catch(e){}
+    location.reload();
+  };
+  const barra=document.getElementById('vc-barra');
+  if(sim){
+    barra.innerHTML=`<span><i class="ti ti-eye"></i> Estás viendo la portada como <b>${esc(sim.nombre)}</b> · los paneles se abren con tu usuario</span><button type="button" id="vc-salir">Volver a mi vista</button>`;
+    barra.hidden=false;
+    document.getElementById('vc-salir').onclick=()=>{ borrarSimulacion(); location.reload(); };
+  }
 }
 
 const Portal = {
-  async salir(){ await sb.auth.signOut(); location.reload(); }
+  async salir(){ borrarSimulacion(); await sb.auth.signOut(); location.reload(); }
 };
 
 document.getElementById('login-form').addEventListener('submit', async ev=>{
