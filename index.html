@@ -247,6 +247,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
       <button class="btn-sec amarillo" id="u-nuevo"><i class="ti ti-user-plus"></i> Nuevo usuario</button>
     </div>
     <div class="u-lista" id="u-lista"><p class="ayuda">Cargando…</p></div>
+    <datalist id="dl-vend-cob"></datalist>
   </div>
 </div>
 
@@ -523,7 +524,44 @@ const SECCIONES_VENTAS=[['panel','Panel General'],['venta','Venta'],['facturacio
   ['ofertas','Ofertas'],['cc','Cuentas Corrientes']];
 const NOMBRE_CORTO={ventas:'Ventas',patrimonial:'Patrimonial',eerr:'EERR',proveedores:'Proveedores',cobranzas:'Cobranzas',
   cheques:'Cheques',produccion:'Producción',ausentismo:'Ausentismo'};
-let USUARIOS=[], EQUIPOS=[];
+let USUARIOS=[], EQUIPOS=[], CONFIGS={}, SECTORES_AUS=[], VENDEDORES_COB=[];
+
+/* Permisos internos de cada panel (copiados de cómo funciona cada uno por dentro) */
+const AUS_TABS=[['detalle','Grilla diaria'],['indicadores','Indicadores'],['ausentismo','Ausentismo'],['liquidacion','Liquidación'],['premio','Premio cuatrimestral'],
+  ['personal','Personal'],['vacaciones','Vacaciones'],['ropa','Entrega de ropa'],['polivalencia','Polivalencia'],['pantalla','Pantalla (TV de planta)'],['documentacion','Documentación']];
+const AUS_ACC=[['novedades','Cargar novedades (CSV de Lenox / corregir un día)'],['premio','Editar el premio cuatrimestral'],['personal','Editar el listado de personal'],
+  ['vacaciones','Cargar solicitudes de vacaciones'],['vacAutorizar','Autorizar vacaciones (jefe)'],['ropa','Gestionar la entrega de ropa'],['datosVer','Ver datos personales (DNI, CUIL, domicilio…)'],
+  ['datosEditar','Editar datos personales'],['polivalencia','Editar la matriz de polivalencia'],['pantalla','Publicar avisos y configurar la pantalla'],['documentos','Subir y ocultar documentos']];
+const AUS_EMPRESAS=['SPOTSLINE SRL','SPL DISTRIBUIDORA'];
+const PROD_VISTAS=[['general','General'],['planta','Planta en vivo'],['pantalla','Pantalla en vivo (TV)'],['plan','Planificación'],['taller','Fábrica (taller)'],
+  ['pintura','Pintura'],['armado','Armado'],['indicadores','Indicadores'],['maestro','Maestro'],['auditoria','Registro de cambios'],['instructivo','Instructivo']];
+const PROD_AREAS=[['','Todos los sectores'],['taller','Fábrica'],['pintura','Pintura'],['armado','Armado'],['expedicion','Expedición'],['matriceria','Matricería'],['mantenimiento','Mantenimiento']];
+const PROD_PERM=[['plan','Planificar (órdenes, líneas, estándares y objetivos)'],['maestro','Editar maestros (materiales, máquinas, personal, motivos)'],
+  ['cargar','Cargar producción'],['editar','Editar y borrar registros'],['derivar','Derivar personal a otro sector']];
+const PROD_PLANT={
+  planificador:{nombre:'Planificador',vistas:'*',area:'',permisos:{plan:true,maestro:true,cargar:true,editar:true,derivar:true}},
+  supervisor:{nombre:'Supervisor de sector',vistas:['planta','taller','indicadores','instructivo'],area:'taller',permisos:{cargar:true,editar:true,derivar:true}},
+  gerencia:{nombre:'Gerencia (solo ver)',vistas:['general','planta','pantalla','indicadores','instructivo'],area:'',permisos:{}},
+  pantalla:{nombre:'Pantalla de planta (TV)',vistas:['pantalla'],area:'',permisos:{}}};
+const COB_PERM=[['tab_cartera','Solapa Cartera'],['tab_cumplimiento','Solapa Cumplimiento de pagos'],['tab_objetivos','Solapa Objetivos de cobranza'],['tab_ayuda','Solapa Ayuda'],
+  ['actualizar','Actualizar datos (subir Excel de Odoo)'],['exportar','Exportar a Excel'],['reporte','Reporte y mail semanal'],['editar_objetivos','Editar objetivos'],
+  ['mails_vendedores','Mails de vendedores'],['plantillas','Editar plantilla de mail']];
+const cobDefecto=rol=>Object.fromEntries(COB_PERM.map(([k])=>[k, k.startsWith('tab_')||k==='reporte'?true:rol!=='vendedor']));
+const CFG_DEF={
+  proveedores:()=>({rol:'usuario',usuario:''}),
+  ausentismo:()=>({admin:false,tabs:['detalle'],empresas:[],sectores:[],acciones:{}}),
+  produccion:()=>({plantilla:'gerencia',...JSON.parse(JSON.stringify(PROD_PLANT.gerencia)),nombre:undefined}),
+  cobranzas:()=>({rol:'cobranzas',vendedor_nombre:'',usuario:'',cartera:'todos',permisos:cobDefecto('cobranzas')})
+};
+const PANELES_CFG=['proveedores','ausentismo','produccion','cobranzas'];
+async function cargarListasPaneles(){
+  try{ const {data}=await sb.from('panel_horas').select('valor').eq('id','personal_v1').maybeSingle();
+    const rows=data&&data.valor&&Array.isArray(data.valor.rows)?data.valor.rows:[];
+    SECTORES_AUS=[...new Set(rows.map(r=>r.sector).filter(Boolean))].sort(); }catch(e){ SECTORES_AUS=[]; }
+  try{ const {data}=await sb.from('clientes').select('vendedor');
+    VENDEDORES_COB=[...new Set((data||[]).map(r=>r.vendedor).filter(Boolean))].sort(); }catch(e){ VENDEDORES_COB=[]; }
+  if(!VENDEDORES_COB.length) VENDEDORES_COB=EQUIPOS.map(e=>e.nombre).filter(Boolean);
+}
 
 async function llamarAdmin(body){
   const {data,error}=await sb.functions.invoke('admin-usuarios',{body});
@@ -559,9 +597,14 @@ async function cargarUsuarios(){
     ]);
     if(pan.error) throw new Error(pan.error.message);
     EQUIPOS=eq.data||[];
+    CONFIGS={};
+    const cf=await sb.rpc('portal_listar_configs');
+    if(!cf.error) (cf.data||[]).forEach(c=>{ (CONFIGS[c.user_id]=CONFIGS[c.user_id]||{})[c.panel]=c.config; });
+    await cargarListasPaneles();
     const paneles=Object.fromEntries((pan.data||[]).map(p=>[p.user_id,p.paneles]));
     USUARIOS=(adm.usuarios||[]).map(u=>({...u, paneles: paneles[u.id]}));
     USUARIOS.sort((a,b)=>(b.activo-a.activo)||String(a.nombre).localeCompare(String(b.nombre)));
+    document.getElementById('dl-vend-cob').innerHTML=VENDEDORES_COB.map(v=>`<option value="${esc(v)}">`).join('');
     pintarUsuarios();
   }catch(e){ lista.innerHTML=`<p class="msg err">${esc(e.message)}</p>`; }
 }
@@ -622,6 +665,7 @@ function tarjeta(u,esNuevo){
         <div data-bloque="eq" style="margin-top:12px" ${u.rol==='vendedor'?'':'hidden'}><div class="u-lbl" style="margin-bottom:6px">Equipo de ventas</div>
           <div class="u-grid">${EQUIPOS.map(e=>chk('e',[e.slug,e.nombre],(u.equipos||[]).includes(e.slug))).join('')||'<span class="ayuda">No hay equipos cargados.</span>'}</div></div>
       </div>
+      ${PANELES_CFG.map(pn=>bloqueCfg(pn,u,pans,admin)).join('')}
       <div class="u-fila">
         <button type="button" class="btn-prim" data-a="guardar" style="width:auto;padding:10px 16px">${esNuevo?'Crear usuario':'Guardar cambios'}</button>
         ${esNuevo?'<button type="button" class="btn-sec" data-a="cancelar">Cancelar</button>':''}
@@ -637,13 +681,88 @@ function tarjeta(u,esNuevo){
   </details>`;
 }
 
+function cfgDe(u,panel){ const c=(CONFIGS[u.id]||{})[panel]; return c?JSON.parse(JSON.stringify(c)):CFG_DEF[panel](); }
+function bloqueCfg(panel,u,pans,admin){
+  const c=cfgDe(u,panel);
+  const chk=(attr,val,lbl,on)=>`<label class="u-check"><input type="checkbox" ${attr}="${esc(val)}" ${on?'checked':''}> ${esc(lbl)}</label>`;
+  const titulo={proveedores:'Permisos dentro de Proveedores',ausentismo:'Permisos dentro de Ausentismo',produccion:'Permisos dentro de Producción',cobranzas:'Permisos dentro de Cobranzas'}[panel];
+  let h='';
+  if(panel==='proveedores'){
+    h=`<div class="u-campos">
+      <div class="u-campo"><label>Rol en Proveedores</label><select data-c="rol"><option value="usuario" ${c.rol!=='admin'?'selected':''}>Usuario (gestiones y menciones)</option><option value="admin" ${c.rol==='admin'?'selected':''}>Administrador (además sube Excel y exporta)</option></select></div>
+      <div class="u-campo"><label>Usuario para menciones (@)</label><input type="text" data-c="usuario" value="${esc(c.usuario||'')}" placeholder="si se deja vacío, la parte del mail antes de @"></div></div>`;
+  }
+  if(panel==='ausentismo'){
+    h=`<label class="u-check" style="margin-bottom:10px"><input type="checkbox" data-c="admin" ${c.admin?'checked':''}> <b>Administrador de Ausentismo</b> (ve todo, hace todo y ve el registro de cambios)</label>
+      <div data-sub="aus-detalle" ${c.admin?'hidden':''}>
+      <div class="u-lbl" style="margin:4px 0 6px">Solapas que ve</div><div class="u-grid">${AUS_TABS.map(([k,l])=>chk('data-aus-tab',k,l,(c.tabs||[]).includes(k))).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Qué puede hacer</div><div class="u-grid">${AUS_ACC.map(([k,l])=>chk('data-aus-acc',k,l,!!(c.acciones||{})[k])).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Alcance: empresas (sin tildar = todas)</div><div class="u-grid">${AUS_EMPRESAS.map(e=>chk('data-aus-emp',e,e,(c.empresas||[]).includes(e))).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Alcance: sectores (sin tildar = todos)</div><div class="u-grid">${(SECTORES_AUS.length?SECTORES_AUS:(c.sectores||[])).map(e=>chk('data-aus-sec',e,e,(c.sectores||[]).includes(e))).join('')||'<span class="ayuda">No se pudo leer la lista de sectores.</span>'}</div>
+      </div>`;
+  }
+  if(panel==='produccion'){
+    const todas=c.vistas==='*';
+    h=`<div class="u-campos">
+      <div class="u-campo"><label>Plantilla (completa lo de abajo)</label><select data-c="plantilla"><option value="">Personalizado</option>${Object.entries(PROD_PLANT).map(([k,v])=>`<option value="${k}" ${c.plantilla===k?'selected':''}>${esc(v.nombre)}</option>`).join('')}</select></div>
+      <div class="u-campo"><label>Sector fijo</label><select data-c="area">${PROD_AREAS.map(([k,l])=>`<option value="${k}" ${String(c.area||'')===k?'selected':''}>${esc(l)}</option>`).join('')}</select></div></div>
+      <div class="u-lbl" style="margin:12px 0 6px">Pantallas que ve</div>
+      <label class="u-check" style="margin-bottom:6px"><input type="checkbox" data-c="todas" ${todas?'checked':''}> <b>Todas las pantallas</b></label>
+      <div class="u-grid" data-sub="prod-vistas" ${todas?'hidden':''}>${PROD_VISTAS.map(([k,l])=>chk('data-prod-v',k,l,todas||(c.vistas||[]).includes(k))).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Qué puede hacer (sin tildar = solo ver)</div><div class="u-grid">${PROD_PERM.map(([k,l])=>chk('data-prod-p',k,l,!!(c.permisos||{})[k])).join('')}</div>`;
+  }
+  if(panel==='cobranzas'){
+    const todos=c.cartera==='todos'||c.cartera==null;
+    h=`<div class="u-campos">
+      <div class="u-campo"><label>Rol en Cobranzas</label><select data-c="rol">${[['cobranzas','Cobranzas'],['vendedor','Vendedor (ve solo su cartera)'],['admin','Administrador de Cobranzas']].map(([k,l])=>`<option value="${k}" ${c.rol===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="u-campo"><label>Vendedor asignado (como figura en la cartera)</label><input type="text" data-c="vendedor_nombre" list="dl-vend-cob" value="${esc(c.vendedor_nombre||'')}"></div>
+      <div class="u-campo"><label>Usuario para menciones (@)</label><input type="text" data-c="usuario" value="${esc(c.usuario||'')}" placeholder="si se deja vacío, la parte del mail antes de @"></div></div>
+      <div class="u-lbl" style="margin:12px 0 6px">Cartera que ve</div>
+      <label class="u-check" style="margin-bottom:6px"><input type="checkbox" data-c="cartera_todos" ${todos?'checked':''}> <b>Todas las carteras</b> (si es vendedor, además de la suya ve las que se tilden abajo)</label>
+      <div class="u-grid" data-sub="cob-cart" ${todos?'hidden':''}>${VENDEDORES_COB.map(v=>chk('data-cob-cart',v,v,Array.isArray(c.cartera)&&c.cartera.includes(v))).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Solapas y acciones</div><div class="u-grid">${COB_PERM.map(([k,l])=>chk('data-cob-p',k,l,!!(c.permisos||{})[k])).join('')}</div>`;
+  }
+  return `<div class="u-sec ventas" data-cfg="${panel}" ${admin||!pans.includes(panel)?'hidden':''}><h3>${titulo}</h3>${h}</div>`;
+}
+function leerCfg(card,panel){
+  const q=s=>card.querySelector(`[data-cfg="${panel}"] ${s}`), qa=s=>[...card.querySelectorAll(`[data-cfg="${panel}"] ${s}`)];
+  if(panel==='proveedores') return {rol:q('[data-c="rol"]').value, usuario:q('[data-c="usuario"]').value.trim()};
+  if(panel==='ausentismo') return {admin:q('[data-c="admin"]').checked, tabs:qa('[data-aus-tab]:checked').map(i=>i.dataset.ausTab),
+    acciones:Object.fromEntries(qa('[data-aus-acc]').map(i=>[i.dataset.ausAcc,i.checked])), empresas:qa('[data-aus-emp]:checked').map(i=>i.dataset.ausEmp),
+    sectores:qa('[data-aus-sec]:checked').map(i=>i.dataset.ausSec)};
+  if(panel==='produccion') return {plantilla:q('[data-c="plantilla"]').value, area:q('[data-c="area"]').value,
+    vistas:q('[data-c="todas"]').checked?'*':qa('[data-prod-v]:checked').map(i=>i.dataset.prodV),
+    permisos:Object.fromEntries(qa('[data-prod-p]').map(i=>[i.dataset.prodP,i.checked]))};
+  if(panel==='cobranzas'){ const rol=q('[data-c="rol"]').value;
+    const permisos=Object.fromEntries(qa('[data-cob-p]').map(i=>[i.dataset.cobP,i.checked])); permisos.usuarios=false;
+    return {rol, vendedor_nombre:q('[data-c="vendedor_nombre"]').value.trim(), usuario:q('[data-c="usuario"]').value.trim().toLowerCase(),
+      cartera:q('[data-c="cartera_todos"]').checked?'todos':qa('[data-cob-cart]:checked').map(i=>i.dataset.cobCart), permisos}; }
+}
+function conectarCfg(card){
+  const sec=p=>card.querySelector(`[data-cfg="${p}"]`);
+  const aus=sec('ausentismo'); aus.querySelector('[data-c="admin"]').addEventListener('change',e=>{ aus.querySelector('[data-sub="aus-detalle"]').hidden=e.target.checked; });
+  const pr=sec('produccion');
+  pr.querySelector('[data-c="todas"]').addEventListener('change',e=>{ pr.querySelector('[data-sub="prod-vistas"]').hidden=e.target.checked; });
+  pr.querySelector('[data-c="plantilla"]').addEventListener('change',e=>{ const t=PROD_PLANT[e.target.value]; if(!t) return;
+    pr.querySelector('[data-c="area"]').value=t.area||''; pr.querySelector('[data-c="todas"]').checked=t.vistas==='*'; pr.querySelector('[data-sub="prod-vistas"]').hidden=t.vistas==='*';
+    pr.querySelectorAll('[data-prod-v]').forEach(i=>{ i.checked=t.vistas==='*'||t.vistas.includes(i.dataset.prodV); });
+    pr.querySelectorAll('[data-prod-p]').forEach(i=>{ i.checked=!!t.permisos[i.dataset.prodP]; }); });
+  pr.querySelectorAll('[data-prod-v],[data-prod-p],[data-c="area"],[data-c="todas"]').forEach(i=>i.addEventListener('change',e=>{ if(e.isTrusted) pr.querySelector('[data-c="plantilla"]').value=''; }));
+  const cb=sec('cobranzas');
+  cb.querySelector('[data-c="cartera_todos"]').addEventListener('change',e=>{ cb.querySelector('[data-sub="cob-cart"]').hidden=e.target.checked; });
+  cb.querySelector('[data-c="rol"]').addEventListener('change',e=>{ const d=cobDefecto(e.target.value); cb.querySelectorAll('[data-cob-p]').forEach(i=>{ i.checked=!!d[i.dataset.cobP]; });
+    if(e.target.value==='vendedor'){ cb.querySelector('[data-c="cartera_todos"]').checked=false; cb.querySelector('[data-sub="cob-cart"]').hidden=false; } });
+}
+
 function conectar(card,u,esNuevo){
+  conectarCfg(card);
   const $c=s=>card.querySelector(s), f=n=>$c(`[data-f="${n}"]`), msg=$c('[data-msg]');
   const decir=(t,tipo)=>{ msg.className='msg '+(tipo||''); msg.textContent=t; };
   const refrescar=()=>{
     const admin=f('admin').checked, ventas=$c('[data-p="ventas"]').checked;
     $c('[data-bloque="paneles"]').hidden=admin;
     $c('[data-bloque="ventas"]').hidden=admin||!ventas;
+    PANELES_CFG.forEach(pn=>{ const b=$c(`[data-cfg="${pn}"]`); if(b) b.hidden=admin||!$c(`[data-p="${pn}"]`).checked; });
     const vend=f('rolv').value==='vendedor';
     $c('[data-bloque="secc"]').hidden=vend; $c('[data-bloque="eq"]').hidden=!vend;
   };
@@ -662,7 +781,7 @@ function conectar(card,u,esNuevo){
     const nombre=f('nombre').value.trim(), email=f('email').value.trim();
     if(!nombre) return decir('Poné el nombre.','err');
     if(esNuevo && !/^\S+@\S+\.\S+$/.test(email)) return decir('Revisá el email.','err');
-    if(!admin && !paneles.length) return decir('Tildá al menos un panel.','err');
+    if(!admin && !paneles.length && !confirm('Este usuario no va a tener ningún panel (no va a poder entrar a la portada). ¿Guardar igual? Es lo que corresponde para el usuario Planta.')) return decir('Tildá al menos un panel.','err');
     if(!admin && ventas && rol==='lectura' && !secciones.length) return decir('Marcá al menos una sección de Ventas.','err');
     if(!admin && ventas && rol==='vendedor' && !equipos.length) return decir('Elegí el equipo de ventas.','err');
     if(!admin && !ventas && !secciones.length) secciones=['panel'];   // no entra a Ventas igual (lo bloquea el permiso)
@@ -682,7 +801,11 @@ function conectar(card,u,esNuevo){
         if(u.soy_yo) body.rol_actual=u.rol; else { body.rol=rol; body.activo=f('activo').checked; }
         await llamarAdmin(body);
       }
-      if(!admin){ const {error}=await sb.rpc('portal_guardar_paneles',{p_user:id,p_paneles:paneles}); if(error) throw new Error(error.message); }
+      if(!admin){ const {error}=await sb.rpc('portal_guardar_paneles',{p_user:id,p_paneles:paneles}); if(error) throw new Error(error.message);
+        for(const pn of PANELES_CFG.filter(x=>paneles.includes(x))){
+          const r=await sb.rpc('portal_guardar_config',{p_user:id,p_panel:pn,p_config:leerCfg(card,pn)});
+          if(r.error) throw new Error('Permisos de '+pn+': '+r.error.message);
+        } }
       decir(esNuevo?'Usuario creado.':'Cambios guardados.','ok');
       setTimeout(cargarUsuarios, esNuevo?300:900);
     }catch(err){ decir(err.message,'err'); btn.disabled=false; }
