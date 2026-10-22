@@ -217,6 +217,8 @@ const sb = window.supabase.createClient(AUTH_URL, AUTH_KEY);
 /* Supabase de los paneles de Carla (Etapa 1: se leen igual que en el Panel General) */
 const SB_FIN  = { url:'https://ozbynorwhkmevjmftpmy.supabase.co', key:'sb_publishable_sBhFezk4bg0OPbSGG59jwA_bt1I1kpp' };
 const SB_PROD = { url:'https://edjbfzjzvpjkmjqjworu.supabase.co', key:'sb_publishable_QWdJV1lf_AmOmaIVwIuueg_Jb8hdmaj' };
+/* Etapa 2: paneles ya mudados al Supabase del portal (se leen con la sesión del usuario) */
+const SB_NUEVO = { url:AUTH_URL, key:AUTH_KEY, conSesion:true };
 
 /* =========================================================
    PANELES — el "id" es la clave de permiso (perfiles.paneles)
@@ -228,25 +230,25 @@ const PANELS = [
     nota:'Venta, facturación, pendiente, stock, clientes, acuerdos, ofertas y comisiones. Cada uno ve lo de su rol y su equipo.' },
   { id:'patrimonial', name:'Situación patrimonial', icon:'ti-building-bank', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-Patrimonial/panel_patrimonial_sincronizado.html', fetcher:'patrimonial',
-    supabase:{ ...SB_FIN, table:'patrimonial', rowId:'datos_v1' } },
+    supabase:{ ...SB_NUEVO, table:'patrimonial', rowId:'datos_v1' } },
   { id:'eerr', name:'Estado de resultados', icon:'ti-report-money', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-Estado-Resultados/estado_resultados_sincronizado.html', fetcher:'eerr',
-    supabase:{ ...SB_FIN, table:'eerr', rowId:'resumen_v1' } },
+    supabase:{ ...SB_NUEVO, table:'eerr', rowId:'resumen_v1' } },
   { id:'proveedores', name:'Proveedores', icon:'ti-truck-delivery', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-de-Proveedores/', fetcher:'proveedores',
-    supabase:{ ...SB_FIN, table:'proveedores' } },
+    supabase:{ ...SB_NUEVO, table:'proveedores' } },
   { id:'cobranzas', name:'Cobranzas', icon:'ti-cash', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Cobranzas/', fetcher:'cobranzas',
     supabase:{ ...SB_FIN, table:'clientes' } },
   { id:'cheques', name:'Intereses y gastos bancarios', icon:'ti-file-invoice', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-de-Cheques/panel_cheques_sincronizado.html', fetcher:'cheques',
-    supabase:{ ...SB_FIN, table:'cheques', rowId:'resumen_v1' } },
+    supabase:{ ...SB_NUEVO, table:'cheques', rowId:'resumen_v1' } },
   { id:'produccion', name:'Producción', icon:'ti-building-factory-2', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-produccion/', fetcher:'produccion',
-    supabase:{ ...SB_PROD, table:'panel_produccion', rowId:'resumen_v1' } },
+    supabase:{ ...SB_NUEVO, table:'panel_produccion', rowId:'resumen_v1' } },
   { id:'ausentismo', name:'Ausentismo', icon:'ti-calendar-off', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-de-Ausentismo/panel_horas_spotsline.html', fetcher:'ausentismo',
-    supabase:{ ...SB_PROD, table:'panel_horas', rowId:'dataset_v1' } }
+    supabase:{ ...SB_NUEVO, table:'panel_horas', rowId:'dataset_v1' } }
 ];
 
 let VISIBLES = [];          // paneles que puede ver el usuario
@@ -279,7 +281,9 @@ function renderEntityFilter(){
 /* ---------- lectura de datos (mismos cálculos que el Panel General) ---------- */
 async function leer(cfg, query){
   const {url,key,table}=cfg.supabase;
-  const res=await fetch(`${url}/rest/v1/${table}?${query}`,{headers:{apikey:key,Authorization:`Bearer ${key}`}});
+  let bearer=key;
+  if(cfg.supabase.conSesion){ const {data}=await sb.auth.getSession(); bearer=data&&data.session?data.session.access_token:key; }
+  const res=await fetch(`${url}/rest/v1/${table}?${query}`,{headers:{apikey:key,Authorization:`Bearer ${bearer}`}});
   if(!res.ok) throw new Error('HTTP '+res.status);
   return res.json();
 }
@@ -408,6 +412,8 @@ async function entrar(session, tipo){
 
   document.getElementById('u-nombre').innerHTML='Hola, <b>'+esc((perfil&&perfil.nombre)||session.user.email)+'</b>';
   document.getElementById('btn-permisos').hidden=!ES_ADMIN;
+  const volver=new URLSearchParams(location.search).get('volver');
+  if(volver && /^\/[A-Za-z0-9_\-]/.test(volver) && !volver.startsWith('//')){ location.replace(volver); return; }
   mostrar('ok');
   renderStatusRail(); renderEntityFilter(); renderCards(); loadAll();
   // Registra el ingreso en el mismo historial que el Panel de Ventas (si la función existe)
