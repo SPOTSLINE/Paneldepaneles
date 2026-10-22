@@ -714,7 +714,7 @@ function bloqueCfg(panel,u,pans,admin){
   if(panel==='cobranzas'){
     const todos=c.cartera==='todos'||c.cartera==null;
     h=`<div class="u-campos">
-      <div class="u-campo"><label>Rol en Cobranzas</label><select data-c="rol">${[['cobranzas','Cobranzas'],['vendedor','Vendedor (ve solo su cartera)'],['admin','Administrador de Cobranzas']].map(([k,l])=>`<option value="${k}" ${c.rol===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="u-campo"><label>Rol en Cobranzas</label><select data-c="rol">${(()=>{const R=[['cobranzas','Cobranzas'],['vendedor','Vendedor (ve solo su cartera)'],['viewer','Solo ver (viewer)'],['admin','Administrador de Cobranzas']];if(c.rol&&!R.some(r=>r[0]===c.rol))R.push([c.rol,c.rol]);return R.map(([k,l])=>`<option value="${esc(k)}" ${c.rol===k?'selected':''}>${esc(l)}</option>`).join('')})()}</select></div>
       <div class="u-campo"><label>Vendedor asignado (como figura en la cartera)</label><input type="text" data-c="vendedor_nombre" list="dl-vend-cob" value="${esc(c.vendedor_nombre||'')}"></div>
       <div class="u-campo"><label>Usuario para menciones (@)</label><input type="text" data-c="usuario" value="${esc(c.usuario||'')}" placeholder="si se deja vacío, la parte del mail antes de @"></div></div>
       <div class="u-lbl" style="margin:12px 0 6px">Cartera que ve</div>

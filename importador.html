@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importador de permisos · Panel de Paneles</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#242424;--bg4:#2e2e2e;--border:#333;--border2:#444;--text:#f0f0f0;--text2:#aaa;--text3:#666;--yellow:#f5c400;--yellow-dim:#2a2200;--red:#e74c3c;--green:#2ecc71;--green-bg:#0a2010;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 16px 80px}
+.eyebrow{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+h1{font-size:22px;margin:4px 0 6px;padding-bottom:12px;border-bottom:1px solid var(--yellow)}
+p{color:var(--text2);font-size:14px;line-height:1.5;margin:12px 0}
+.caja{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:14px 0}
+.tabla{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:var(--bg3);color:var(--text2);font:10px var(--mono);text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
+td small{display:block;color:var(--text3);font-size:11px;margin-top:2px}
+.chip{display:inline-block;font:10px var(--mono);padding:2px 7px;border-radius:12px;background:var(--bg4);color:var(--text2);margin:0 4px 3px 0}
+.chip.p{background:var(--yellow-dim);color:var(--yellow)}
+select,input[type=email]{background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:7px 8px;font-size:13px;width:100%;max-width:280px}
+input[type=email]{margin-top:6px}
+.match{font:10px var(--mono);margin-top:4px}
+.match.auto{color:var(--green)} .match.nada{color:var(--text3)}
+button{background:var(--yellow);color:#111;border:none;border-radius:8px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.ok{color:var(--green)} .err{color:var(--red)}
+.cred{background:var(--green-bg);border:1px solid var(--green);border-radius:10px;padding:12px 14px;font:13px/1.7 var(--mono);white-space:pre-wrap;margin-top:12px}
+a{color:var(--yellow)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">SPL / Spotsline · Etapa 2b</div>
+  <h1>Importador de permisos</h1>
+  <p>Trae los usuarios y permisos que ya estaban cargados <b>dentro</b> de Cobranzas, Proveedores, Ausentismo y Producción, y los pasa al Panel de Paneles. Cada fila es un usuario viejo de un panel: elegí a qué usuario del login único corresponde (ya viene sugerido cuando el nombre o el mail coinciden). Lo que dejes en "no importar" no se toca. Se puede correr más de una vez.</p>
+
+  <div id="estado" class="caja">Verificando sesión…</div>
+
+  <div id="app" hidden>
+    <div class="tabla"><table>
+      <thead><tr><th>Panel</th><th>Usuario en ese panel</th><th>Permisos que tenía</th><th>Pasarlo a…</th></tr></thead>
+      <tbody id="filas"></tbody>
+    </table></div>
+    <div class="caja" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <button id="btn">Importar permisos</button>
+      <span id="resumen" style="font-size:13px;color:var(--text2)"></span>
+    </div>
+    <div id="final"></div>
+  </div>
+</div>
+
+<script>
+const sb = window.supabase.createClient('https://fzylibnqqjznaddgpsjt.supabase.co', 'sb_publishable_zHONcBODl6nbPiLS3TSrZw_D8MVJqeE');
+const COB_VIEJO = { url:'https://ozbynorwhkmevjmftpmy.supabase.co', key:'sb_publishable_sBhFezk4bg0OPbSGG59jwA_bt1I1kpp' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9@. ]+/g,' ').trim();
+const tokens = s => new Set(norm(s).split(/\s+/).filter(t => t.length > 1));
+
+/* ---------- permisos de cada panel: igual que se calculaban adentro ---------- */
+const COB_DEF = { tab_cartera:()=>true, tab_cumplimiento:()=>true, tab_objetivos:()=>true, tab_ayuda:()=>true,
+  actualizar:r=>r!=='vendedor', exportar:r=>r!=='vendedor', reporte:()=>true, editar_objetivos:r=>r!=='vendedor',
+  mails_vendedores:r=>r!=='vendedor', plantillas:r=>r!=='vendedor' };
+function cfgCobranzas(u){
+  const p = u.permisos && typeof u.permisos === 'object' ? u.permisos : {};
+  const permisos = {};
+  Object.keys(COB_DEF).forEach(k => { permisos[k] = typeof p[k] === 'boolean' ? p[k] : !!COB_DEF[k](u.rol); });
+  permisos.usuarios = false;
+  let cartera = p.cartera; if (cartera === undefined || cartera === null) cartera = u.rol === 'vendedor' ? [] : 'todos';
+  return { rol: u.rol || 'cobranzas', vendedor_nombre: u.vendedor_nombre || '', usuario: (u.usuario||'').toLowerCase(), cartera, permisos };
+}
+function cfgProveedores(u){ return { rol: u.rol === 'admin' ? 'admin' : 'usuario', usuario: u.usuario || '' }; }
+function cfgAusentismo(u){ const p = u.permisos || {};
+  return { admin: u.rol === 'admin', tabs: p.tabs || [], empresas: p.empresas || [], sectores: p.sectores || [], acciones: p.acciones || {} }; }
+function cfgProduccion(p){
+  let pm = p.permisos; if (!pm) pm = p.vistas === '*' ? {plan:true,maestro:true,cargar:true,editar:true,derivar:true} : {cargar:true,editar:!!p.editar,derivar:true};
+  pm = Object.assign({}, pm); delete pm.usuarios;
+  return { plantilla: '', vistas: p.vistas === '*' ? '*' : (p.vistas || []), area: p.area || '', permisos: pm };
+}
+function resumen(panel, c){
+  if (panel === 'cobranzas') return `rol ${c.rol}${c.vendedor_nombre?' · vendedor '+c.vendedor_nombre:''} · ${c.cartera==='todos'?'todas las carteras':(c.cartera.length?c.cartera.length+' carteras':'su cartera')} · ${Object.keys(c.permisos).filter(k=>c.permisos[k]).length} permisos · @${c.usuario}`;
+  if (panel === 'proveedores') return `${c.rol} · @${c.usuario}`;
+  if (panel === 'ausentismo') return c.admin ? 'administrador' : `${c.tabs.length} solapas · ${Object.keys(c.acciones).filter(k=>c.acciones[k]).length} acciones${(c.empresas.length||c.sectores.length)?' · alcance '+[...c.empresas,...c.sectores].join(', '):''}`;
+  if (panel === 'produccion') return `${c.vistas==='*'?'todas las pantallas':c.vistas.length+' pantallas'}${c.area?' · sector '+c.area:''} · ${Object.keys(c.permisos).filter(k=>c.permisos[k]).join(', ')||'solo ver'}`;
+}
+
+/* ---------- lectura de lo que había en cada panel ---------- */
+async function leerViejos(){
+  const filas = [];
+  // Cobranzas (tabla usuarios del Supabase de Carla)
+  try {
+    const r = await fetch(`${COB_VIEJO.url}/rest/v1/usuarios?select=nombre,usuario,rol,vendedor_nombre,email,activo,permisos&order=nombre`, { headers:{ apikey:COB_VIEJO.key, Authorization:`Bearer ${COB_VIEJO.key}` } });
+    (await r.json()).forEach(u => filas.push({ panel:'cobranzas', nombre:u.nombre, usuario:u.usuario, email:u.email, activo:u.activo!==false, cfg:cfgCobranzas(u) }));
+  } catch(e){ console.error('cobranzas', e); }
+  // Proveedores
+  const pv = await sb.from('usuarios_proveedores').select('nombre,usuario,rol,activo').order('nombre');
+  (pv.data||[]).forEach(u => filas.push({ panel:'proveedores', nombre:u.nombre, usuario:u.usuario, activo:u.activo!==false, cfg:cfgProveedores(u) }));
+  // Ausentismo
+  const au = await sb.from('panel_horas').select('valor').eq('id','usuarios_v1').maybeSingle();
+  ((au.data && au.data.valor && au.data.valor.usuarios) || []).forEach(u => filas.push({ panel:'ausentismo', nombre:u.nombre, usuario:'', activo:u.activo!==false, cfg:cfgAusentismo(u) }));
+  // Producción (solo perfiles con clave = personas)
+  const pr = await sb.from('panel_produccion').select('valor').eq('id','maestro/perfiles').maybeSingle();
+  ((pr.data && pr.data.valor && pr.data.valor.items) || []).filter(p => p.pin).forEach(p => {
+    const tv = Array.isArray(p.vistas) && p.vistas.length === 1 && p.vistas[0] === 'pantalla';
+    filas.push({ panel:'produccion', nombre:p.nombre, usuario:'', activo:!tv, tv, cfg:cfgProduccion(p) });
+  });
+  return filas;
+}
+
+let NUEVOS = [], PANELES = {}, FILAS = [];
+function sugerir(f){
+  if (f.email) { const u = NUEVOS.find(x => norm(x.email) === norm(f.email)); if (u) return u.id; }
+  const tf = tokens(f.nombre); let mejor = null, punt = 0, empate = false;
+  for (const u of NUEVOS) {
+    const tu = tokens(u.nombre); let s = 0; tf.forEach(t => { if (tu.has(t)) s++; });
+    if (norm(u.nombre) === norm(f.nombre)) s += 3;
+    if (f.usuario && norm(String(u.email).split('@')[0]) === norm(f.usuario)) s += 2;
+    if (s > punt) { punt = s; mejor = u; empate = false; } else if (s === punt && s > 0) empate = true;
+  }
+  const minimo = tf.size >= 2 ? 2 : 1;
+  return mejor && punt >= minimo && !empate ? mejor.id : '';
+}
+function pintar(){
+  const opciones = '<option value="">— no importar —</option><option value="__nuevo">+ crear usuario nuevo…</option>' +
+    NUEVOS.map(u => `<option value="${esc(u.id)}">${esc(u.nombre)} · ${esc(u.email)}</option>`).join('');
+  document.getElementById('filas').innerHTML = FILAS.map((f, i) => {
+    const sug = f.activo ? sugerir(f) : '';
+    const nota = !f.activo ? (f.tv ? 'TV de planta: ya la cubre el usuario Planta' : 'estaba desactivado') : (sug ? 'coincidencia automática' : 'sin coincidencia: elegí a mano');
+    return `<tr data-i="${i}">
+      <td><span class="chip p">${esc(f.panel)}</span></td>
+      <td>${esc(f.nombre||'—')}${f.usuario?`<small>@${esc(f.usuario)}</small>`:''}${f.email?`<small>${esc(f.email)}</small>`:''}</td>
+      <td style="font-size:12px;color:var(--text2)">${esc(resumen(f.panel, f.cfg))}</td>
+      <td><select data-sel>${opciones}</select><input type="email" data-mail placeholder="email del usuario nuevo" value="${esc(f.email||'')}" hidden>
+        <div class="match ${sug?'auto':'nada'}">${esc(nota)}</div></td></tr>`;
+  }).join('');
+  document.querySelectorAll('#filas tr').forEach(tr => {
+    const f = FILAS[+tr.dataset.i], sel = tr.querySelector('[data-sel]'), mail = tr.querySelector('[data-mail]');
+    sel.value = f.activo ? sugerir(f) : '';
+    sel.onchange = () => { mail.hidden = sel.value !== '__nuevo'; contar(); };
+  });
+  contar();
+}
+function contar(){
+  const n = [...document.querySelectorAll('[data-sel]')].filter(s => s.value).length;
+  document.getElementById('resumen').textContent = `${n} de ${FILAS.length} filas para importar`;
+}
+function clave(){ const L='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return [...crypto.getRandomValues(new Uint32Array(10))].map(n=>L[n%L.length]).join(''); }
+async function admin(body){
+  const { data, error } = await sb.functions.invoke('admin-usuarios', { body });
+  if (error) { let m = error.message; try { const j = await error.context.json(); if (j && j.error) m = j.error; } catch(e){} throw new Error(m); }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+
+document.getElementById('btn').addEventListener('click', async () => {
+  const btn = document.getElementById('btn'); btn.disabled = true;
+  const fin = document.getElementById('final'); fin.innerHTML = '<p>Importando…</p>';
+  const errores = [], creados = [], porUsuario = {};
+  try {
+    // 1) usuarios nuevos (agrupados por email)
+    const nuevosPorMail = {};
+    for (const tr of document.querySelectorAll('#filas tr')) {
+      const f = FILAS[+tr.dataset.i], v = tr.querySelector('[data-sel]').value;
+      if (!v) continue;
+      let id = v;
+      if (v === '__nuevo') {
+        const email = tr.querySelector('[data-mail]').value.trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email)) { errores.push(`${f.nombre} (${f.panel}): falta un email válido para crear el usuario`); continue; }
+        if (!nuevosPorMail[email]) {
+          const existe = NUEVOS.find(u => norm(u.email) === norm(email));
+          if (existe) nuevosPorMail[email] = existe.id;
+          else {
+            const pass = clave();
+            try {
+              await admin({ accion:'crear', nombre:f.nombre, email, password:pass, rol:'lectura', secciones:['panel'], equipos:[] });
+              const l = await admin({ accion:'listar' });
+              const u = (l.usuarios||[]).find(x => norm(x.email) === norm(email));
+              if (!u) throw new Error('no apareció en la lista');
+              nuevosPorMail[email] = u.id; creados.push({ nombre:f.nombre, email, pass }); PANELES[u.id] = [];
+            } catch(e) { errores.push(`${f.nombre}: no se pudo crear (${e.message})`); continue; }
+          }
+        }
+        id = nuevosPorMail[email];
+      }
+      (porUsuario[id] = porUsuario[id] || []).push(f);
+    }
+    // 2) paneles + permisos de cada usuario
+    for (const [id, filas] of Object.entries(porUsuario)) {
+      const u = NUEVOS.find(x => x.id === id);
+      if (!u || u.rol !== 'admin') {
+        const base = PANELES[id] === undefined ? ['ventas'] : (PANELES[id] || ['ventas']);
+        const paneles = [...new Set([...base, ...filas.map(f => f.panel)])];
+        const r = await sb.rpc('portal_guardar_paneles', { p_user:id, p_paneles:paneles });
+        if (r.error) { errores.push(`${u?u.nombre:id}: ${r.error.message}`); continue; }
+        PANELES[id] = paneles;
+      }
+      for (const f of filas) {
+        const r = await sb.rpc('portal_guardar_config', { p_user:id, p_panel:f.panel, p_config:f.cfg });
+        if (r.error) errores.push(`${f.nombre} (${f.panel}): ${r.error.message}`);
+      }
+    }
+    const n = Object.values(porUsuario).reduce((a, l) => a + l.length, 0);
+    fin.innerHTML = `<div class="caja"><b class="${errores.length?'err':'ok'}">${errores.length?'Terminó con avisos':'Listo'}:</b> se importaron los permisos de ${n} fila(s) en ${Object.keys(porUsuario).length} usuario(s).
+      ${errores.length?'<ul style="margin:8px 0 0 18px" class="err">'+errores.map(e=>`<li>${esc(e)}</li>`).join('')+'</ul>':''}
+      <p>Revisalos en la portada → Usuarios.</p></div>` +
+      (creados.length ? `<div class="cred">Usuarios creados (pasales estos datos; las contraseñas no se vuelven a mostrar):\n\n${creados.map(c=>`${c.nombre}\n  https://spotsline.github.io/Paneldepaneles/\n  Email: ${c.email}\n  Contraseña: ${c.pass}`).map(esc).join('\n\n')}</div>` : '');
+    await cargar(false);
+  } catch(e) { fin.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  btn.disabled = false;
+});
+
+async function cargar(conFilas = true){
+  const [l, p] = await Promise.all([admin({ accion:'listar' }), sb.rpc('portal_listar_usuarios')]);
+  NUEVOS = (l.usuarios||[]).filter(u => u.activo !== false && String(u.email).toLowerCase() !== 'planta@spotsline.com.ar').sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+  PANELES = Object.fromEntries((p.data||[]).map(x => [x.user_id, x.paneles]));
+  if (conFilas) { FILAS = await leerViejos(); pintar(); }
+}
+
+(async () => {
+  const est = document.getElementById('estado');
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { est.innerHTML = 'No hay sesión. <a href="./?volver=' + encodeURIComponent(location.pathname) + '">Ingresá en el Panel de Paneles</a> y volvé a abrir esta página.'; return; }
+  const { data: esAdm } = await sb.rpc('portal_es_admin');
+  if (!esAdm) { est.innerHTML = '<span class="err">Solo un administrador puede usar el Importador.</span>'; return; }
+  est.innerHTML = 'Sesión de administrador: <b>' + esc(data.session.user.email) + '</b> · leyendo los usuarios de cada panel…';
+  try { await cargar(); est.innerHTML = 'Sesión de administrador: <b>' + esc(data.session.user.email) + '</b>'; document.getElementById('app').hidden = false; }
+  catch(e) { est.innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }
+})();
+</script>
+</body>
+</html>
