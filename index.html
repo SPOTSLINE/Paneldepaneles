@@ -276,8 +276,7 @@ const SB_NUEVO = { url:AUTH_URL, key:AUTH_KEY, conSesion:true };
    ========================================================= */
 const PANELS = [
   { id:'ventas', name:'Ventas', icon:'ti-chart-line', accent:'--yellow', accentDim:'--yellow-dim',
-    url:'https://spotsline.github.io/Panel-Ventas/', fetcher:null,
-    nota:'Venta, facturación, pendiente, stock, clientes, acuerdos, ofertas y comisiones. Cada uno ve lo de su rol y su equipo.' },
+    url:'https://spotsline.github.io/Panel-Ventas/', fetcher:'ventas' },
   { id:'patrimonial', name:'Situación patrimonial', icon:'ti-building-bank', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-Patrimonial/panel_patrimonial_sincronizado.html', fetcher:'patrimonial',
     supabase:{ ...SB_NUEVO, table:'patrimonial', rowId:'datos_v1' } },
@@ -313,6 +312,13 @@ function mesCorto(ym){ const [y,m]=String(ym).split('-'); return (MESES_CORTOS[+
 /* ---------- filtro por razón social ---------- */
 const ENTITIES=[{id:'todas',label:'Todas'},{id:'spl',label:'SPL'},{id:'spotsline',label:'Spotsline'}];
 let currentEntity='todas';
+function matchesEntityFull(empresa, entity){
+  if(entity==='todas') return true;
+  const e=(empresa||'').toUpperCase();
+  if(entity==='spl') return e.includes('SPL');
+  if(entity==='spotsline') return e.includes('SPOTSLINE');
+  return true;
+}
 function matchesEntitySimple(empresa, entity){
   if(entity==='todas') return true;
   const e=(empresa||'').toUpperCase();
@@ -345,7 +351,39 @@ async function leerFila(cfg, nombre, id){
 }
 const bucket=()=>currentEntity==='todas'?'todas':currentEntity;
 
+/* Ventas: mismos archivos y cuentas que el Panel General de Ventas.
+   El vendedor baja solo el paquete de su equipo (sin costos), igual que en Ventas. */
+let PERFIL_P=null; const VENTAS_CACHE={meta:null,datos:null};
+async function bajarDato(nombre){
+  const {data,error}=await sb.storage.from('datos').download(nombre+'.gz');
+  if(error) throw error;
+  const bytes=new Uint8Array(await data.arrayBuffer());
+  if(bytes[0]===0x1f&&bytes[1]===0x8b) return await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  return new TextDecoder().decode(bytes);
+}
+async function datosVentas(){
+  const eq=(PERFIL_P&&PERFIL_P.rol==='vendedor')?(PERFIL_P.equipos||[]):null;
+  const ruta=n=>eq?eq.map(e=>`equipos/${e}/${n}`):[n];
+  const meta=await bajarDato(ruta('meta.json')[0]).catch(()=>'');
+  if(VENTAS_CACHE.datos&&VENTAS_CACHE.meta===meta&&meta) return VENTAS_CACHE.datos;
+  if(eq&&!eq.length) return {v:[],f:[],p:[]};
+  const leerTodo=async n=>[].concat(...await Promise.all(ruta(n).map(r=>bajarDato(r).then(JSON.parse).catch(()=>[]))));
+  const [v,f,p]=await Promise.all(['ventas.json','facturacion.json','pendiente_facturacion.json'].map(leerTodo));
+  VENTAS_CACHE.meta=meta; VENTAS_CACHE.datos={v,f,p};
+  return VENTAS_CACHE.datos;
+}
+
 const FETCHERS={
+  async ventas(){
+    const {v,f,p}=await datosVentas();
+    const ok=r=>matchesEntityFull(r.empresa,currentEntity);
+    const mes=v.map(r=>(r.fecha||'').substring(0,7)).filter(Boolean).sort().pop();
+    if(!mes){ const e=new Error('Todavía no hay ventas cargadas.'); e.amable=true; throw e; }
+    const venta=v.filter(r=>ok(r)&&(r.fecha||'').startsWith(mes)).reduce((a,r)=>a+(r.subtotal||0),0);
+    const fact=f.filter(r=>ok(r)&&(r.fecha||'').startsWith(mes)).reduce((a,r)=>a+(r.monto_neto||0),0);
+    const pend=p.filter(ok).reduce((a,r)=>a+(r.monto_pendiente||0),0);
+    return {note:mesCorto(mes), kpis:[{val:fmtMoney(venta),lbl:'Venta del mes'},{val:fmtMoney(fact),lbl:'Facturación del mes'},{val:fmtMoney(pend),lbl:'Pendiente total'}]};
+  },
   async proveedores(cfg){
     const rows=(await leer(cfg,'select=deuda,dias_vencidos,empresa')).filter(r=>matchesEntitySimple(r.empresa,currentEntity));
     let deuda=0,crit=0; rows.forEach(r=>{ deuda+=parseFloat(r.deuda)||0; if((parseInt(r.dias_vencidos)||0)>45) crit++; });
@@ -386,10 +424,29 @@ const FETCHERS={
   },
   async cheques(cfg){
     const s=await leerFila(cfg,'Cheques');
+    const d=s&&s.datos;
+    if(d&&Array.isArray(d.ops)){
+      /* Mismas cuentas que el panel de Cheques, pero si el mes en curso no tiene movimientos
+         se muestra el último mes con datos (antes quedaba todo en 0) */
+      const mk=f=>f?String(f).slice(0,7):'';
+      const emp=e=>matchesEntityFull(e||'Spotsline',currentEntity);
+      const costo=o=>(+o.interes||0)+(+o.iva||0)+(+o.percep||0)+(+o.sellos||0)+(+o.comision||0);
+      const hoy=new Date(); const actual=hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0');
+      const meses=[...new Set(d.ops.filter(o=>emp(o.empresa)).map(o=>mk(o.fecha)).filter(Boolean))].sort();
+      const mes=meses.includes(actual)?actual:(meses.pop()||actual);
+      const ops=d.ops.filter(o=>mk(o.fecha)===mes&&emp(o.empresa));
+      const gastos=(d.gastos||[]).filter(g=>mk(g.fecha)===mes&&g.cost&&!g.exclude&&emp(g.empresa));
+      const vendido=ops.reduce((a,o)=>a+(+o.importe||0),0), totalCosto=ops.reduce((a,o)=>a+costo(o),0);
+      const gb=gastos.reduce((a,g)=>a+(+g.importe||0),0);
+      const cartera=(d.cartera||[]).filter(c=>emp(c.empresa)).length;
+      return {note:mesCorto(mes)+(mes===actual?'':' (último con datos)'),
+        kpis:[{val:fmtMoney(totalCosto),lbl:'Costo cheques (mes)'},{val:fmtMoney(gb),lbl:'Gastos bancarios (mes)'},
+          {val:(vendido>0?totalCosto/vendido*100:0).toFixed(2)+'%',lbl:'% pérdida'},{val:cartera,lbl:'Cheques en cartera'}]};
+    }
     const resumen=s.resumen?s.resumen:s;
     const b=resumen[bucket()];
     if(!b) throw new Error('Sin datos');
-    return {kpis:[{val:fmtMoney(b.totalCosto),lbl:'Costo cheques (mes)'},{val:fmtMoney(b.costoGastosBancarios ?? 0),lbl:'Gastos bancarios (mes)'},
+    return {note:resumen.mes?mesCorto(resumen.mes):'', kpis:[{val:fmtMoney(b.totalCosto),lbl:'Costo cheques (mes)'},{val:fmtMoney(b.costoGastosBancarios ?? 0),lbl:'Gastos bancarios (mes)'},
       {val:b.pctPerdida.toFixed(2)+'%',lbl:'% pérdida'},{val:b.cheteraEnCartera,lbl:'Cheques en cartera'}]};
   }
 };
@@ -479,7 +536,7 @@ function mostrar(estado){ document.documentElement.dataset.login=estado; }
 
 async function entrar(session, tipo){
   const [{data:perfil}, {data:paneles, error}] = await Promise.all([
-    sb.from('perfiles').select('nombre,rol,activo').eq('user_id',session.user.id).maybeSingle(),
+    sb.from('perfiles').select('nombre,rol,activo,equipos').eq('user_id',session.user.id).maybeSingle(),
     sb.rpc('portal_mis_paneles')
   ]);
   if(error){
@@ -489,6 +546,7 @@ async function entrar(session, tipo){
   }
   let lista=paneles||[];
   ES_ADMIN = !!perfil && perfil.rol==='admin' && perfil.activo!==false;
+  PERFIL_P = perfil;
   const sim = ES_ADMIN ? leerSimulacion() : null;
   if(!ES_ADMIN) borrarSimulacion();
   if(sim) lista = sim.paneles;
