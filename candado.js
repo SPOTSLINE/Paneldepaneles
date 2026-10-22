@@ -34,7 +34,7 @@
   var CLAVE_PLANTA = 'spl-planta-sesion';           // sesión de celulares / TV de planta
   // ▼▼▼ Usuario de planta (crearlo en Usuarios del Panel de Paneles, SIN tildar ningún panel) ▼▼▼
   var PLANTA_EMAIL = 'planta@spotsline.com.ar';
-  var PLANTA_CLAVE = '2ddPUsJYZk';
+  var PLANTA_CLAVE = 'planta123';
   // ▲▲▲ ─────────────────────────────────────────────────────────────────────────────── ▲▲▲
   var vistaActual = function () { return (location.hash || '').replace(/^#/, '').split('/')[0]; };
   var esVistaLibre = function () { return SIN_LOGIN.indexOf(vistaActual()) >= 0; };
