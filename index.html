@@ -166,18 +166,44 @@ input[type=checkbox]:disabled{cursor:not-allowed}
 .msg{font-size:12px;min-width:60px}
 .msg.ok{color:var(--ok)} .msg.err{color:var(--bad)}
 
+.menu-btn{display:none}
+.btn-sec .corto{display:none}
 @media (max-width:900px){
   .app{grid-template-columns:1fr}
-  .rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px 14px;gap:4px}
-  .brand img{width:96px;margin:0}
-  .brandsub,.rail .grp{display:none}
-  .rail a,.rail button.lnk{width:auto;padding:7px 10px;font-size:14px}
+  /* Barra de arriba compacta: logo + menú desplegable */
+  .rail{position:sticky;top:0;z-index:30;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:8px 14px;gap:2px}
+  .brand{padding:0;margin-right:auto}
+  .brand img{width:auto;height:38px;margin:0}
+  .menu-btn{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:var(--railink);border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer}
+  .rail:not(.abierto) > :not(.brand):not(.menu-btn){display:none!important}
+  .rail.abierto{max-height:100vh;overflow:auto;padding-bottom:14px}
+  .rail.abierto .brandsub{display:none}
+  .rail.abierto > a.on{margin-top:10px}
+  .rail.abierto .grp{display:block;width:100%;padding:14px 10px 4px}
+  .rail.abierto a,.rail.abierto button.lnk{width:100%;padding:9px 10px;font-size:15px}
   .rail .ext{display:none}
-  .rail .foot{margin-top:0;width:100%;flex-direction:row;flex-wrap:wrap;align-items:center;padding:8px 0 0}
-  .vc-sel{width:auto;max-width:100%}
-  main{padding:20px 16px 48px}
-  h1.tit{font-size:24px}
+  .rail .foot{margin-top:6px;width:100%;flex-direction:column;align-items:stretch;padding:12px 10px 0;border-top:1px solid rgba(255,255,255,.1)}
+  .vc-sel{width:100%}
+  /* Contenido */
+  main{padding:14px 12px 40px}
+  h1.tit{font-size:20px;margin:0 0 10px}
+  .lead,.aviso-orden b{display:none}
+  .barra{gap:6px;margin-bottom:10px}
+  .seg{flex:1 1 100%;display:flex}
+  .seg button{flex:1;padding:8px 6px}
+  .barra .btn-sec{flex:1;justify-content:center;padding:9px 8px}
+  .btn-sec .largo{display:none}.btn-sec .corto{display:inline}
+  .barra .sync{flex:1 1 100%;margin:0;text-align:right;font-size:11px}
+  .gcards{grid-template-columns:1fr;gap:8px}
+  .gcard{min-height:0;padding:11px 13px}
+  .gcard h3{font-size:12px;margin-bottom:4px}
+  .gcard .fila{padding:1px 0;column-gap:6px}
+  .gcard .fila b{font-size:17px;min-width:0}
+  .gcard .fila span{font-size:12px}
+  .gcard .pie{padding-top:6px;font-size:11px}
+  .ojo{width:32px;height:28px}
 }
+
 </style>
 </head>
 <body>
@@ -216,6 +242,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
   <div class="vc-barra" id="vc-barra" hidden role="status"></div>
   <nav class="rail" id="rail" aria-label="Paneles">
     <div class="brand"><img class="logo-sp" alt="Spotsline"></div>
+    <button type="button" class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="rail">☰ Paneles</button>
     <div class="brandsub">Panel de Paneles</div>
     <a href="#" class="on" aria-current="page">General</a>
     <div class="grp">Paneles</div>
@@ -237,9 +264,9 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     <p class="lead">Resumen de cada panel con los datos más importantes. Tocá un recuadro para abrir el panel.</p>
     <div class="barra">
       <div class="seg" id="entityFilter" role="group" aria-label="Empresa"></div>
-      <button class="btn-sec" id="btn-datos" type="button">Elegir datos</button>
-      <button class="btn-sec" id="btn-orden" type="button">Ordenar y activar</button>
-      <button class="btn-sec" id="refreshBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg> Actualizar</button>
+      <button class="btn-sec" id="btn-datos" type="button"><span class="largo">Elegir datos</span><span class="corto">Datos</span></button>
+      <button class="btn-sec" id="btn-orden" type="button"><span class="largo">Ordenar y activar</span><span class="corto">Ordenar</span></button>
+      <button class="btn-sec" id="refreshBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg> <span class="largo">Actualizar</span></button>
       <span class="sync" id="footerNote">Última sincronización: —</span>
     </div>
     <div class="aviso-orden" id="aviso-orden" hidden>Arrastrá los recuadros (o usá las flechas) para cambiar el orden, y apagá los que no querés ver. Tocá <b>Listo</b> al terminar.</div>
@@ -596,9 +623,13 @@ function pintarElegir(){
     guardarOcultos(); renderCards(); }));
 }
 document.getElementById('btn-datos').addEventListener('click',()=>{ pintarElegir(); modalDatos.hidden=false; });
+(function(){ const rail=document.getElementById('rail'), mb=document.getElementById('menu-btn');
+  mb.addEventListener('click',()=>{ const a=rail.classList.toggle('abierto'); mb.setAttribute('aria-expanded',a); mb.textContent=a?'✕ Cerrar':'☰ Paneles'; });
+  rail.addEventListener('click',e=>{ if(e.target.closest('a,button.lnk')&&rail.classList.contains('abierto')){ rail.classList.remove('abierto'); mb.setAttribute('aria-expanded',false); mb.textContent='☰ Paneles'; } });
+})();
 document.getElementById('btn-orden').addEventListener('click',()=>{
   EDITANDO=!EDITANDO; const b=document.getElementById('btn-orden');
-  b.textContent=EDITANDO?'Listo':'Ordenar y activar'; b.classList.toggle('amarillo',EDITANDO);
+  b.innerHTML=EDITANDO?'Listo':'<span class="largo">Ordenar y activar</span><span class="corto">Ordenar</span>'; b.classList.toggle('amarillo',EDITANDO);
   renderCards(); if(!EDITANDO) loadAll(); });
 document.getElementById('ed-cerrar').addEventListener('click',()=>{ modalDatos.hidden=true; });
 modalDatos.addEventListener('click',e=>{ if(e.target===modalDatos) modalDatos.hidden=true; });
