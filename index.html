@@ -96,6 +96,25 @@ h1.tit{font-stretch:112%;font-weight:700;font-size:28px;margin:0 0 4px;letter-sp
 .gcard .estado{white-space:nowrap;align-self:flex-start;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:99px;background:var(--panel2);color:var(--muted)}
 .gcard .estado.ok{background:var(--okbg);color:var(--ok)}
 .gcard .estado.err{background:var(--badbg);color:var(--bad)}
+.gcard h3 .der{display:flex;align-items:center;gap:6px}
+.ojo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:22px;border-radius:6px;border:0;background:none;color:var(--faint);cursor:pointer;padding:0}
+.ojo:hover{background:var(--panel2);color:var(--ink)}
+.gcard .fila b.tapado{letter-spacing:.12em;color:var(--faint)}
+.gcards.editando .gcard{border-style:dashed;cursor:grab;user-select:none}
+.gcards.editando .gcard:hover{border-color:var(--line2)}
+.gcard.arrastrando{opacity:.4}
+.gcard.destino{border-color:var(--lamp)!important;box-shadow:0 0 0 2px var(--lamp)}
+.gcard.inactivo h3,.gcard.inactivo .nota{opacity:.45}.gcard.inactivo{background:var(--panel2)}
+.gcard .ord{display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:10px;border-top:1px solid var(--line2)}
+.gcard .ord .flecha{width:30px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;font-size:14px}
+.gcard .ord .flecha:disabled{opacity:.3;cursor:default}
+.gcard .ord .asa{font-size:16px;color:var(--faint);margin-right:auto;cursor:grab}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.gcard .sw input{appearance:none;-webkit-appearance:none;width:32px!important;min-width:32px;height:18px!important;padding:0!important;border:0!important;border-radius:99px!important;background:var(--line)!important;position:relative;cursor:pointer;margin:0;flex:none;transition:background .15s}
+.gcard .sw input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.gcard .sw input:checked{background:var(--ok)!important}
+.gcard .sw input:checked::after{left:16px}
+.aviso-orden{font-size:13px;color:var(--muted);margin:-6px 0 12px}
 .vacio{grid-column:1/-1;background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--muted);font-size:14px}
 
 /* ===== elegir datos ===== */
@@ -219,9 +238,11 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     <div class="barra">
       <div class="seg" id="entityFilter" role="group" aria-label="Empresa"></div>
       <button class="btn-sec" id="btn-datos" type="button">Elegir datos</button>
+      <button class="btn-sec" id="btn-orden" type="button">Ordenar y activar</button>
       <button class="btn-sec" id="refreshBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg> Actualizar</button>
       <span class="sync" id="footerNote">Última sincronización: —</span>
     </div>
+    <div class="aviso-orden" id="aviso-orden" hidden>Arrastrá los recuadros (o usá las flechas) para cambiar el orden, y apagá los que no querés ver. Tocá <b>Listo</b> al terminar.</div>
     <div class="gcards" id="grid"></div>
   </main>
 </div>
@@ -454,7 +475,14 @@ const FETCHERS={
 /* ---------- render ---------- */
 /* Datos elegidos (filtro "Elegir datos"): se guarda en este navegador, por usuario */
 let ED_KEY='portal_datos', OCULTOS={paneles:[],kpis:[]}, ULTIMOS={};
-function cargarOcultos(uid){ ED_KEY='portal_datos_'+(uid||''); try{ OCULTOS=Object.assign({paneles:[],kpis:[]},JSON.parse(localStorage.getItem(ED_KEY)||'{}')); }catch(e){ OCULTOS={paneles:[],kpis:[]}; } }
+function cargarOcultos(uid){ ED_KEY='portal_datos_'+(uid||''); try{ OCULTOS=Object.assign({paneles:[],kpis:[],orden:[],tapados:[]},JSON.parse(localStorage.getItem(ED_KEY)||'{}')); }catch(e){ OCULTOS={paneles:[],kpis:[],orden:[],tapados:[]}; } }
+/* Orden elegido: los paneles que no están en la lista van al final, en el orden de siempre */
+function ordenar(lista){ const o=OCULTOS.orden||[]; const pos=id=>{ const i=o.indexOf(id); return i<0?999:i; };
+  return lista.map((p,i)=>[p,i]).sort((a,b)=>(pos(a[0].id)-pos(b[0].id))||(a[1]-b[1])).map(x=>x[0]); }
+let EDITANDO=false;
+const OJO_ABIERTO='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const OJO_CERRADO='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+const tapado=p=>(OCULTOS.tapados||[]).includes(p.id);
 function guardarOcultos(){ try{ localStorage.setItem(ED_KEY,JSON.stringify(OCULTOS)); }catch(e){} }
 const kpiId=(p,lbl)=>p.id+':'+lbl;
 const panelVisible=p=>!OCULTOS.paneles.includes(p.id);
@@ -465,24 +493,67 @@ function renderStatusRail(){
 }
 function renderCards(){
   const grid=document.getElementById('grid');
+  grid.classList.toggle('editando',EDITANDO);
+  document.getElementById('aviso-orden').hidden=!EDITANDO;
+  if(EDITANDO){ renderEditar(grid); return; }
   const vis=VISIBLES.filter(panelVisible);
-  if(!vis.length){ grid.innerHTML=VISIBLES.length?'<div class="vacio">Ocultaste todos los recuadros. Tocá "Elegir datos" para volver a mostrarlos.</div>':''; return; }
+  if(!vis.length){ grid.innerHTML=VISIBLES.length?'<div class="vacio">Desactivaste todos los recuadros. Tocá "Ordenar y activar" para volver a mostrarlos.</div>':''; return; }
   grid.innerHTML=vis.map(p=>{
     const cuerpo=p.fetcher
       ? `<div id="kpis-${p.id}">${'<div class="fila"><b><span class="esk"></span></b><span>cargando</span></div>'.repeat(3)}</div>`
       : `<div class="nota">${esc(p.nota||'')}</div>`;
+    const ojo=p.fetcher?`<span class="ojo" role="button" tabindex="0" data-ojo="${p.id}" title="${tapado(p)?'Mostrar los totales':'Ocultar los totales'}" aria-label="${tapado(p)?'Mostrar los totales':'Ocultar los totales'}">${tapado(p)?OJO_CERRADO:OJO_ABIERTO}</span>`:'';
     return `<a class="gcard" href="${p.url}" target="_blank" rel="noopener" id="card-${p.id}">
-      <h3><span>${esc(p.name)}</span><span class="estado ${p.fetcher?'':'ok'}" id="badge-${p.id}">${p.fetcher?'Sincronizando':'Panel'}</span></h3>
+      <h3><span>${esc(p.name)}</span><span class="der">${ojo}<span class="estado ${p.fetcher?'':'ok'}" id="badge-${p.id}">${p.fetcher?'Sincronizando':'Panel'}</span></span></h3>
       ${cuerpo}
       <div class="pie"><span id="updated-${p.id}">${p.fetcher?'—':''}</span><span class="abrir">Abrir panel</span></div>
     </a>`;
   }).join('');
+  grid.querySelectorAll('[data-ojo]').forEach(b=>{
+    const toggle=e=>{ e.preventDefault(); e.stopPropagation(); const id=b.dataset.ojo;
+      const p=VISIBLES.find(x=>x.id===id); const estaba=tapado(p);
+      OCULTOS.tapados=(OCULTOS.tapados||[]).filter(x=>x!==id); if(!estaba) OCULTOS.tapados.push(id);
+      guardarOcultos();
+      b.innerHTML=tapado(p)?OJO_CERRADO:OJO_ABIERTO; b.title=b.ariaLabel=tapado(p)?'Mostrar los totales':'Ocultar los totales';
+      if(ULTIMOS[id]) pintarKpis(p,ULTIMOS[id]); };
+    b.addEventListener('click',toggle);
+    b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') toggle(e); });
+  });
   vis.filter(p=>p.fetcher&&ULTIMOS[p.id]).forEach(p=>pintarKpis(p,ULTIMOS[p.id]));
+}
+/* Modo "Ordenar y activar": todos los recuadros, con flechas, arrastre e interruptor */
+function renderEditar(grid){
+  grid.innerHTML=VISIBLES.map((p,i)=>`<div class="gcard ${panelVisible(p)?'':'inactivo'}" draggable="true" data-id="${p.id}">
+      <h3><span>${esc(p.name)}</span></h3>
+      <div class="nota">${panelVisible(p)?'Se muestra en la portada.':'Desactivado: no aparece en la portada.'}</div>
+      <div class="ord"><span class="asa" title="Arrastrar">⠿</span>
+        <button class="flecha" type="button" data-mover="-1" ${i===0?'disabled':''} aria-label="Mover antes">←</button>
+        <button class="flecha" type="button" data-mover="1" ${i===VISIBLES.length-1?'disabled':''} aria-label="Mover después">→</button>
+        <label class="sw"><input type="checkbox" data-activo ${panelVisible(p)?'checked':''}> Activo</label></div>
+    </div>`).join('');
+  const guardarOrden=()=>{ const ids=VISIBLES.map(p=>p.id); OCULTOS.orden=ids.concat((OCULTOS.orden||[]).filter(x=>!ids.includes(x))); guardarOcultos(); renderStatusRail(); renderEditar(grid); };
+  grid.querySelectorAll('.gcard').forEach(card=>{
+    const id=card.dataset.id;
+    card.querySelectorAll('[data-mover]').forEach(b=>b.addEventListener('click',()=>{
+      const i=VISIBLES.findIndex(p=>p.id===id), j=i+Number(b.dataset.mover);
+      if(j<0||j>=VISIBLES.length) return; [VISIBLES[i],VISIBLES[j]]=[VISIBLES[j],VISIBLES[i]]; guardarOrden(); }));
+    card.querySelector('[data-activo]').addEventListener('change',e=>{
+      OCULTOS.paneles=OCULTOS.paneles.filter(x=>x!==id); if(!e.target.checked) OCULTOS.paneles.push(id);
+      guardarOcultos(); renderEditar(grid); });
+    card.addEventListener('dragstart',e=>{ card.classList.add('arrastrando'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',id); });
+    card.addEventListener('dragend',()=>{ card.classList.remove('arrastrando'); grid.querySelectorAll('.destino').forEach(c=>c.classList.remove('destino')); });
+    card.addEventListener('dragover',e=>{ e.preventDefault(); card.classList.add('destino'); });
+    card.addEventListener('dragleave',()=>card.classList.remove('destino'));
+    card.addEventListener('drop',e=>{ e.preventDefault(); const desde=e.dataTransfer.getData('text/plain'); if(!desde||desde===id) return;
+      const p=VISIBLES.find(x=>x.id===desde); VISIBLES=VISIBLES.filter(x=>x.id!==desde);
+      VISIBLES.splice(VISIBLES.findIndex(x=>x.id===id),0,p); guardarOrden(); });
+  });
 }
 function pintarKpis(p,data){
   const el=document.getElementById(`kpis-${p.id}`); if(!el) return;
   const ks=data.kpis.filter(k=>!OCULTOS.kpis.includes(kpiId(p,k.lbl)));
-  el.innerHTML=ks.length?ks.map(k=>`<div class="fila"><b class="${/^-/.test(String(k.val))?'neg':''}">${k.val}</b><span>${esc(k.lbl)}</span></div>`).join(''):'<div class="nota">Sin datos elegidos para este recuadro.</div>';
+  const tap=tapado(p);
+  el.innerHTML=ks.length?ks.map(k=>tap?`<div class="fila"><b class="tapado">••••••</b>`:`<div class="fila"><b class="${/^-/.test(String(k.val))?'neg':''}">${k.val}</b><span>${esc(k.lbl)}</span></div>`).join(''):'<div class="nota">Sin datos elegidos para este recuadro.</div>';
   const badge=document.getElementById(`badge-${p.id}`); if(badge){ badge.textContent='En vivo'; badge.className='estado ok'; }
   const upd=document.getElementById(`updated-${p.id}`); if(upd) upd.textContent=(data.note?data.note+' · ':'')+'act. '+data.hora;
 }
@@ -525,9 +596,13 @@ function pintarElegir(){
     guardarOcultos(); renderCards(); }));
 }
 document.getElementById('btn-datos').addEventListener('click',()=>{ pintarElegir(); modalDatos.hidden=false; });
+document.getElementById('btn-orden').addEventListener('click',()=>{
+  EDITANDO=!EDITANDO; const b=document.getElementById('btn-orden');
+  b.textContent=EDITANDO?'Listo':'Ordenar y activar'; b.classList.toggle('amarillo',EDITANDO);
+  renderCards(); if(!EDITANDO) loadAll(); });
 document.getElementById('ed-cerrar').addEventListener('click',()=>{ modalDatos.hidden=true; });
 modalDatos.addEventListener('click',e=>{ if(e.target===modalDatos) modalDatos.hidden=true; });
-document.getElementById('ed-todo').addEventListener('click',()=>{ OCULTOS={paneles:[],kpis:[]}; guardarOcultos(); pintarElegir(); renderCards(); loadAll(); });
+document.getElementById('ed-todo').addEventListener('click',()=>{ OCULTOS={paneles:[],kpis:[],orden:OCULTOS.orden||[],tapados:[]}; guardarOcultos(); pintarElegir(); renderCards(); loadAll(); });
 
 /* =========================================================
    LOGIN Y PERMISOS
@@ -556,6 +631,7 @@ async function entrar(session, tipo){
   document.getElementById('u-nombre').textContent=(perfil&&perfil.nombre)||session.user.email;
   document.getElementById('rail-admin').hidden=!ES_ADMIN || !!sim;
   cargarOcultos(session.user.id);
+  VISIBLES = ordenar(VISIBLES);
   if(ES_ADMIN) prepararVerComo(sim);
   const volver=new URLSearchParams(location.search).get('volver');
   if(volver && /^\/[A-Za-z0-9_\-]/.test(volver) && !volver.startsWith('//')){ location.replace(volver); return; }
