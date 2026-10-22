@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migrador · Panel de Paneles</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#242424;--border:#333;--text:#f0f0f0;--text2:#aaa;--text3:#666;--yellow:#f5c400;--red:#e74c3c;--green:#2ecc71;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:900px;margin:0 auto;padding:28px 16px 60px}
+.eyebrow{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+h1{font-size:22px;margin:4px 0 6px;padding-bottom:12px;border-bottom:1px solid var(--yellow)}
+p{color:var(--text2);font-size:14px;line-height:1.5;margin:12px 0}
+.caja{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin:16px 0}
+label.grupo{display:flex;gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer}
+label.grupo input{width:18px;height:18px;accent-color:var(--yellow);margin-top:2px}
+label.grupo small{display:block;color:var(--text3);font-size:12px;margin-top:2px}
+button{background:var(--yellow);color:#111;border:none;border-radius:8px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.tabla-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{background:var(--bg3);color:var(--text2);font:10px var(--mono);text-transform:uppercase;letter-spacing:.05em}
+td.n{text-align:right;font-family:var(--mono)}
+.ok{color:var(--green)} .err{color:var(--red)} .esp{color:var(--text3)}
+a{color:var(--yellow)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">SPL / Spotsline · Etapa 2</div>
+  <h1>Migrador de datos</h1>
+  <p>Copia los datos de los Supabase de Carla al Supabase del portal. <b>Las tablas de destino se vacían antes de copiar</b>, así que se puede correr las veces que haga falta: siempre queda igual que el original. Los proyectos de Carla no se modifican.</p>
+
+  <div id="estado" class="caja">Verificando sesión…</div>
+
+  <div id="app" hidden>
+    <div class="caja">
+      <label class="grupo"><input type="checkbox" id="g-simples" checked>
+        <span><b>Paneles simples</b><small>Patrimonial, Estado de resultados, Cheques, Proveedores, Producción y Ausentismo</small></span></label>
+      <label class="grupo"><input type="checkbox" id="g-cobranzas">
+        <span><b>Cobranzas</b><small>Clientes, gestiones, menciones, saldos a favor, reclamos, ventas, cumplimiento y objetivos. Dejarlo para cuando se pase Cobranzas (se vuelve a copiar en ese momento).</small></span></label>
+      <div style="margin-top:12px"><button id="btn">Copiar datos</button></div>
+    </div>
+    <div class="tabla-wrap"><table>
+      <thead><tr><th>Tabla</th><th>Origen</th><th style="text-align:right">Filas origen</th><th style="text-align:right">Copiadas</th><th>Estado</th></tr></thead>
+      <tbody id="filas"></tbody>
+    </table></div>
+    <p id="final"></p>
+  </div>
+</div>
+
+<script>
+const sb = window.supabase.createClient('https://fzylibnqqjznaddgpsjt.supabase.co', 'sb_publishable_zHONcBODl6nbPiLS3TSrZw_D8MVJqeE');
+const FIN  = { nombre:'Cobranzas (Carla)', url:'https://ozbynorwhkmevjmftpmy.supabase.co', key:'sb_publishable_sBhFezk4bg0OPbSGG59jwA_bt1I1kpp' };
+const PROD = { nombre:'Producción (Carla)', url:'https://edjbfzjzvpjkmjqjworu.supabase.co', key:'sb_publishable_QWdJV1lf_AmOmaIVwIuueg_Jb8hdmaj' };
+
+// [tabla origen, tabla destino, clave, proyecto, grupo]
+const TABLAS = [
+  ['patrimonial','patrimonial','id',FIN,'simples'],
+  ['eerr','eerr','id',FIN,'simples'],
+  ['cheques','cheques','id',FIN,'simples'],
+  ['proveedores','proveedores','id',FIN,'simples'],
+  ['gestiones_proveedores','gestiones_proveedores','id',FIN,'simples'],
+  ['menciones_proveedores','menciones_proveedores','id',FIN,'simples'],
+  ['usuarios_proveedores','usuarios_proveedores','id',FIN,'simples'],
+  ['panel_produccion','panel_produccion','id',PROD,'simples'],
+  ['panel_horas','panel_horas','id',PROD,'simples'],
+  ['clientes','clientes','id',FIN,'cobranzas'],
+  ['gestiones','gestiones','id',FIN,'cobranzas'],
+  ['menciones','menciones','id',FIN,'cobranzas'],
+  ['saldos_favor','saldos_favor','id',FIN,'cobranzas'],
+  ['reclamos_mail','reclamos_mail','cliente',FIN,'cobranzas'],
+  ['ventas','ventas_cobranza','id',FIN,'cobranzas'],
+  ['pagos_cumplimiento','pagos_cumplimiento','id',FIN,'cobranzas'],
+  ['objetivos_cobranza','objetivos_cobranza','id',FIN,'cobranzas']
+];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function leerTodo(p, tabla, clave){
+  const filas = []; const paso = 500;
+  for (let desde = 0; ; desde += paso){
+    const r = await fetch(`${p.url}/rest/v1/${tabla}?select=*&order=${clave}.asc&limit=${paso}&offset=${desde}`,
+      { headers:{ apikey:p.key, Authorization:`Bearer ${p.key}` } });
+    if (!r.ok) throw new Error('No se pudo leer el origen (HTTP ' + r.status + ')');
+    const lote = await r.json();
+    filas.push(...lote);
+    if (lote.length < paso) return filas;
+  }
+}
+
+async function copiar(origen, destino, clave, p, fila){
+  const celda = (i, html, cls) => { const td = fila.children[i]; td.innerHTML = html; if (cls) td.className = cls; };
+  celda(4, 'leyendo…', 'esp');
+  const datos = await leerTodo(p, origen, clave);
+  celda(2, datos.length, 'n');
+  celda(4, 'vaciando destino…', 'esp');
+  const { error: eDel } = await sb.from(destino).delete().not(clave, 'is', null);
+  if (eDel) throw new Error(eDel.message);
+  let copiadas = 0;
+  const lote = /panel_|eerr|patrimonial|cheques|ventas|pagos|objetivos/.test(destino) ? 10 : 200;
+  for (let i = 0; i < datos.length; i += lote){
+    const { error } = await sb.from(destino).insert(datos.slice(i, i + lote));
+    if (error) throw new Error(error.message);
+    copiadas += Math.min(lote, datos.length - i);
+    celda(3, copiadas, 'n');
+    celda(4, 'copiando…', 'esp');
+  }
+  const { count, error: eCnt } = await sb.from(destino).select('*', { count:'exact', head:true });
+  if (eCnt) throw new Error(eCnt.message);
+  celda(3, count, 'n');
+  if (count === datos.length) celda(4, '✔ igual al origen', 'ok');
+  else celda(4, `✖ faltan ${datos.length - count}`, 'err');
+  return count === datos.length;
+}
+
+document.getElementById('btn').addEventListener('click', async () => {
+  const btn = document.getElementById('btn'); btn.disabled = true;
+  const grupos = ['simples','cobranzas'].filter(g => document.getElementById('g-' + g).checked);
+  const lista = TABLAS.filter(t => grupos.includes(t[4]));
+  const tbody = document.getElementById('filas');
+  tbody.innerHTML = lista.map(t => `<tr><td>${esc(t[1])}</td><td>${esc(t[3].nombre)}</td><td class="n">—</td><td class="n">—</td><td class="esp">en espera</td></tr>`).join('');
+  let bien = 0;
+  for (let i = 0; i < lista.length; i++){
+    const [o, d, k, p] = lista[i]; const fila = tbody.children[i];
+    try { if (await copiar(o, d, k, p, fila)) bien++; }
+    catch (e) { fila.children[4].innerHTML = '✖ ' + esc(e.message); fila.children[4].className = 'err'; }
+  }
+  const { error } = await sb.rpc('portal_ajustar_secuencias');
+  document.getElementById('final').innerHTML = (bien === lista.length
+    ? '<span class="ok"><b>Listo: todas las tablas quedaron iguales al origen.</b></span>'
+    : `<span class="err"><b>${lista.length - bien} tabla(s) con problemas.</b> Mandá una captura de esta pantalla.</span>`)
+    + (error ? `<br><span class="err">Aviso al ajustar contadores: ${esc(error.message)}</span>` : '');
+  btn.disabled = false;
+});
+
+(async () => {
+  const est = document.getElementById('estado');
+  const { data } = await sb.auth.getSession();
+  if (!data.session){ est.innerHTML = 'No hay sesión. <a href="./?volver=' + encodeURIComponent(location.pathname) + '">Ingresá en el Panel de Paneles</a> y volvé a abrir esta página.'; return; }
+  const { data: admin, error } = await sb.rpc('portal_es_admin');
+  if (error){ est.innerHTML = '<span class="err">Error: ' + esc(error.message) + '</span>'; return; }
+  if (!admin){ est.innerHTML = '<span class="err">Solo un administrador puede usar el Migrador.</span>'; return; }
+  est.innerHTML = 'Sesión de administrador: <b>' + esc(data.session.user.email) + '</b>';
+  document.getElementById('app').hidden = false;
+})();
+</script>
+</body>
+</html>
