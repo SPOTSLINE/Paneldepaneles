@@ -107,6 +107,37 @@ h1{font-size:22px;font-weight:600;letter-spacing:.2px;margin-top:4px;color:var(-
 .btn-sec.spinning i{animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ===== modal usuarios ===== */
+.u-barra{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:4px 0 14px}
+.u-barra input[type=search]{flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);padding:9px 12px;font-size:14px}
+.u-lista{display:flex;flex-direction:column;gap:8px}
+.u-card{background:var(--bg);border:1px solid var(--border);border-radius:10px}
+.u-card.off{opacity:.55}
+.u-card>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.u-card>summary::-webkit-details-marker{display:none}
+.u-card[open]>summary{border-bottom:1px solid var(--border)}
+.u-nom{font-size:14px;font-weight:600}
+.u-mail{font-size:12px;color:var(--text3)}
+.u-chips{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.chip{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:12px;background:var(--bg3);color:var(--text2);white-space:nowrap}
+.chip.admin{background:var(--yellow-dim);color:var(--yellow)}
+.chip.off{background:var(--red-bg);color:var(--red)}
+.u-form{padding:14px;display:grid;gap:14px}
+.u-sec{border:1px solid var(--border);border-radius:8px;padding:12px}
+.u-sec h3{font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:10px;font-weight:600}
+.u-sec.ventas{border-color:var(--yellow);border-style:dashed}
+.u-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px 14px}
+.u-check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.u-campos{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.u-campo{display:flex;flex-direction:column;gap:5px}
+.u-campo label,.u-lbl{font-size:12px;color:var(--text2)}
+.u-campo input,.u-campo select{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);padding:9px 10px;font-size:14px}
+.u-campo input:focus,.u-campo select:focus{outline:none;border-color:var(--yellow)}
+.u-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn-prim{width:auto}
+.btn-peligro{background:var(--red-bg);color:var(--red);border:1px solid var(--red);border-radius:var(--radius);padding:8px 12px;font-size:12px;cursor:pointer}
+.u-cred{background:var(--green-bg);border:1px solid var(--green);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:12px}
+.u-cred code{font-family:var(--mono);color:var(--text)}
 /* ===== modal permisos ===== */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50}
 .modal[hidden]{display:none}
@@ -174,7 +205,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     </div>
     <div class="usuario">
       <span class="nombre" id="u-nombre"></span>
-      <button class="btn-sec amarillo" id="btn-permisos" hidden><i class="ti ti-lock-access"></i> Permisos</button>
+      <button class="btn-sec amarillo" id="btn-permisos" hidden><i class="ti ti-users"></i> Usuarios</button>
       <button class="btn-sec" onclick="Portal.salir()"><i class="ti ti-logout"></i> Salir</button>
     </div>
   </div>
@@ -196,13 +227,17 @@ input[type=checkbox]:disabled{cursor:not-allowed}
 <div class="modal" id="modal-permisos" hidden role="dialog" aria-modal="true" aria-labelledby="perm-titulo">
   <div class="modal-caja">
     <div class="modal-head">
-      <h2 id="perm-titulo">Permisos por panel</h2>
+      <h2 id="perm-titulo">Usuarios y permisos</h2>
       <button class="btn-sec" id="perm-cerrar"><i class="ti ti-x"></i> Cerrar</button>
     </div>
-    <p class="ayuda">Tildá qué paneles ve cada usuario y tocá <b>Guardar</b> en su fila. Los administradores ven todo siempre.
-      Los usuarios nuevos se crean en el Panel de Ventas → Configuración → Usuarios y después se les asignan los paneles acá.
-      Dentro del Panel de Ventas, el rol (vendedor / solo lectura) sigue decidiendo qué secciones y qué equipo ve cada uno.</p>
-    <div class="tabla-wrap"><table id="perm-tabla"></table></div>
+    <p class="ayuda">Acá se crean los usuarios y se elige qué paneles ve cada uno. Si tiene <b>Ventas</b>, aparecen además sus permisos dentro del Panel de Ventas (rol, equipo y secciones).
+      El <b>Administrador general</b> ve todos los paneles y maneja esta pantalla.</p>
+    <div id="u-creado"></div>
+    <div class="u-barra">
+      <input type="search" id="u-buscar" placeholder="Buscar por nombre o email" aria-label="Buscar usuario">
+      <button class="btn-sec amarillo" id="u-nuevo"><i class="ti ti-user-plus"></i> Nuevo usuario</button>
+    </div>
+    <div class="u-lista" id="u-lista"><p class="ayuda">Cargando…</p></div>
   </div>
 </div>
 
@@ -437,40 +472,210 @@ document.getElementById('login-form').addEventListener('submit', async ev=>{
 
 sb.auth.getSession().then(({data})=>{ if(data&&data.session) entrar(data.session,'apertura'); else mostrar('pedir'); });
 
-/* ---------- Pantalla Permisos (admin) ---------- */
+/* ---------- Usuarios y permisos (admin) ---------- */
 const modal=document.getElementById('modal-permisos');
 document.getElementById('btn-permisos').addEventListener('click', abrirPermisos);
 document.getElementById('perm-cerrar').addEventListener('click', ()=>{ modal.hidden=true; });
 modal.addEventListener('click', e=>{ if(e.target===modal) modal.hidden=true; });
 
-const NOMBRE_ROL={admin:'Administrador',lectura:'Solo lectura',vendedor:'Vendedor'};
+const NOMBRE_ROL={admin:'Administrador general',lectura:'Solo lectura',vendedor:'Vendedor'};
+const SECCIONES_VENTAS=[['panel','Panel General'],['venta','Venta'],['facturacion','Facturación'],['pendiente','Pendiente'],
+  ['stock','Stock'],['unidades','Unidades'],['margen','Costo y Margen'],['clientes','Clientes'],['acuerdos','Acuerdos'],
+  ['ofertas','Ofertas'],['cc','Cuentas Corrientes']];
+const NOMBRE_CORTO={ventas:'Ventas',patrimonial:'Patrimonial',eerr:'EERR',proveedores:'Proveedores',cobranzas:'Cobranzas',
+  cheques:'Cheques',produccion:'Producción',ausentismo:'Ausentismo'};
+let USUARIOS=[], EQUIPOS=[];
+
+async function llamarAdmin(body){
+  const {data,error}=await sb.functions.invoke('admin-usuarios',{body});
+  if(error){ let m=error.message; try{ const j=await error.context.json(); if(j&&j.error) m=j.error; }catch(e){} throw new Error(m); }
+  if(data&&data.error) throw new Error(data.error);
+  return data;
+}
+function generarClave(){
+  const L='abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return [...crypto.getRandomValues(new Uint32Array(10))].map(n=>L[n%L.length]).join('');
+}
+function haceCuanto(f){
+  if(!f) return 'nunca';
+  const min=Math.round((Date.now()-new Date(f))/60000);
+  if(min<60) return min<1?'recién':`hace ${min} min`;
+  const h=Math.round(min/60); if(h<24) return `hace ${h} h`;
+  const d=Math.round(h/24); return d===1?'ayer':`hace ${d} días`;
+}
+
 async function abrirPermisos(){
   modal.hidden=false;
-  const tabla=document.getElementById('perm-tabla');
-  tabla.innerHTML='<tr><td>Cargando…</td></tr>';
-  const {data,error}=await sb.rpc('portal_listar_usuarios');
-  if(error){ tabla.innerHTML=`<tr><td class="msg err">${esc(error.message)}</td></tr>`; return; }
-  tabla.innerHTML=`<thead><tr><th style="text-align:left">Usuario</th><th>Rol</th>${PANELS.map(p=>`<th>${esc(p.name)}</th>`).join('')}<th></th></tr></thead>
-  <tbody>${data.map(u=>{
-    const admin=u.rol==='admin';
-    const tiene=admin?PANELS.map(p=>p.id):(u.paneles||['ventas']);
-    return `<tr data-uid="${u.user_id}" class="${u.activo?'':'inactivo'}">
-      <td class="u">${esc(u.nombre||'—')}<small>${esc(u.email)}${u.activo?'':' · deshabilitado'}</small></td>
-      <td><span class="rol ${admin?'admin':''}">${NOMBRE_ROL[u.rol]||esc(u.rol)}</span></td>
-      ${PANELS.map(p=>`<td><input type="checkbox" data-p="${p.id}" ${tiene.includes(p.id)?'checked':''} ${admin?'disabled':''} aria-label="${esc(p.name)}"></td>`).join('')}
-      <td>${admin?'<span class="msg">ve todo</span>':'<button class="btn-mini" disabled>Guardar</button> <span class="msg"></span>'}</td>
-    </tr>`;}).join('')}</tbody>`;
-  tabla.querySelectorAll('tbody tr').forEach(tr=>{
-    const btn=tr.querySelector('.btn-mini'); if(!btn) return;
-    const msg=tr.querySelector('.msg');
-    tr.querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{ btn.disabled=false; msg.textContent=''; }));
-    btn.addEventListener('click', async ()=>{
-      btn.disabled=true; msg.className='msg'; msg.textContent='Guardando…';
-      const paneles=[...tr.querySelectorAll('input:checked')].map(i=>i.dataset.p);
-      const {error}=await sb.rpc('portal_guardar_paneles',{p_user:tr.dataset.uid,p_paneles:paneles});
-      if(error){ msg.className='msg err'; msg.textContent=error.message; btn.disabled=false; }
-      else { msg.className='msg ok'; msg.textContent='Guardado'; }
-    });
+  document.getElementById('u-creado').innerHTML='';
+  await cargarUsuarios();
+}
+async function cargarUsuarios(){
+  const lista=document.getElementById('u-lista');
+  lista.innerHTML='<p class="ayuda">Cargando…</p>';
+  try{
+    const [adm, pan, eq]=await Promise.all([
+      llamarAdmin({accion:'listar'}),
+      sb.rpc('portal_listar_usuarios'),
+      sb.from('equipos').select('slug,nombre').order('nombre')
+    ]);
+    if(pan.error) throw new Error(pan.error.message);
+    EQUIPOS=eq.data||[];
+    const paneles=Object.fromEntries((pan.data||[]).map(p=>[p.user_id,p.paneles]));
+    USUARIOS=(adm.usuarios||[]).map(u=>({...u, paneles: paneles[u.id]}));
+    USUARIOS.sort((a,b)=>(b.activo-a.activo)||String(a.nombre).localeCompare(String(b.nombre)));
+    pintarUsuarios();
+  }catch(e){ lista.innerHTML=`<p class="msg err">${esc(e.message)}</p>`; }
+}
+function panelesDe(u){ return u.rol==='admin' ? PANELS.map(p=>p.id) : (u.paneles||['ventas']); }
+
+function pintarUsuarios(){
+  const q=document.getElementById('u-buscar').value.trim().toLowerCase();
+  const lista=document.getElementById('u-lista');
+  const vis=USUARIOS.filter(u=>!q||(u.nombre+' '+u.email).toLowerCase().includes(q));
+  lista.innerHTML=vis.length?vis.map(u=>tarjeta(u)).join(''):'<p class="ayuda">No hay usuarios con ese nombre.</p>';
+  vis.forEach(u=>conectar(lista.querySelector(`[data-uid="${CSS.escape(u.id)}"]`),u));
+}
+document.getElementById('u-buscar').addEventListener('input', pintarUsuarios);
+document.getElementById('u-nuevo').addEventListener('click', ()=>{
+  const lista=document.getElementById('u-lista');
+  if(lista.querySelector('[data-uid="nuevo"]')) return;
+  const nuevo={id:'nuevo',nombre:'',email:'',rol:'lectura',activo:true,secciones:['panel'],equipos:[],paneles:[]};
+  lista.insertAdjacentHTML('afterbegin',tarjeta(nuevo,true));
+  const card=lista.querySelector('[data-uid="nuevo"]');
+  conectar(card,nuevo,true);
+  card.querySelector('[data-f="nombre"]').focus();
+});
+
+function tarjeta(u,esNuevo){
+  const pans=panelesDe(u), admin=u.rol==='admin';
+  const chips=!u.activo?'<span class="chip off">Deshabilitado</span>'
+    : admin?'<span class="chip admin">Administrador general</span>'
+    : (pans.length?pans.map(p=>`<span class="chip">${esc(NOMBRE_CORTO[p]||p)}</span>`).join(''):'<span class="chip off">Sin paneles</span>');
+  const chk=(nombre,valor,marcado,dis)=>`<label class="u-check"><input type="checkbox" data-${nombre}="${esc(valor[0])}" ${marcado?'checked':''} ${dis?'disabled':''}> ${esc(valor[1])}</label>`;
+  return `<details class="u-card ${u.activo?'':'off'}" data-uid="${esc(u.id)}" ${esNuevo?'open':''}>
+    <summary>
+      <div><div class="u-nom">${esNuevo?'Nuevo usuario':esc(u.nombre||'—')}${u.soy_yo?' <span class="chip">vos</span>':''}</div>
+        <div class="u-mail">${esNuevo?'Completá los datos y tocá Crear':esc(u.email)+' · último ingreso: '+haceCuanto(u.ultimo_ingreso)}</div></div>
+      <div class="u-chips">${esNuevo?'':chips}</div>
+    </summary>
+    <div class="u-form">
+      <div class="u-campos">
+        <div class="u-campo"><label>Nombre</label><input type="text" data-f="nombre" value="${esc(u.nombre)}"></div>
+        <div class="u-campo"><label>Email</label><input type="email" data-f="email" value="${esc(u.email)}" ${esNuevo?'':'disabled'}></div>
+        ${esNuevo?`<div class="u-campo"><label>Contraseña</label><div class="u-fila" style="flex-wrap:nowrap"><input type="text" data-f="pass" value="${generarClave()}" style="flex:1;min-width:0"><button type="button" class="btn-sec" data-a="generar">Generar</button></div></div>`:''}
+      </div>
+      <div class="u-fila">
+        <label class="u-check"><input type="checkbox" data-f="admin" ${admin?'checked':''} ${u.soy_yo?'disabled':''}> <b>Administrador general</b> (ve todo y maneja usuarios)</label>
+        ${esNuevo?'':`<label class="u-check"><input type="checkbox" data-f="activo" ${u.activo?'checked':''} ${u.soy_yo?'disabled':''}> Puede ingresar</label>`}
+      </div>
+      <div class="u-sec" data-bloque="paneles" ${admin?'hidden':''}>
+        <h3>Paneles que puede ver</h3>
+        <div class="u-grid">${PANELS.map(p=>chk('p',[p.id,p.name],pans.includes(p.id))).join('')}</div>
+      </div>
+      <div class="u-sec ventas" data-bloque="ventas" ${admin||!pans.includes('ventas')?'hidden':''}>
+        <h3>Permisos dentro del Panel de Ventas</h3>
+        <div class="u-campos">
+          <div class="u-campo"><label>Rol en Ventas</label>
+            <select data-f="rolv"><option value="lectura" ${u.rol!=='vendedor'?'selected':''}>Solo lectura (toda la empresa, secciones elegidas)</option><option value="vendedor" ${u.rol==='vendedor'?'selected':''}>Vendedor (solo su equipo, sin costos)</option></select></div>
+        </div>
+        <div data-bloque="secc" style="margin-top:12px" ${u.rol==='vendedor'?'hidden':''}><div class="u-lbl" style="margin-bottom:6px">Secciones que puede ver</div>
+          <div class="u-grid">${SECCIONES_VENTAS.map(x=>chk('s',x,(u.secciones||[]).includes(x[0]))).join('')}</div></div>
+        <div data-bloque="eq" style="margin-top:12px" ${u.rol==='vendedor'?'':'hidden'}><div class="u-lbl" style="margin-bottom:6px">Equipo de ventas</div>
+          <div class="u-grid">${EQUIPOS.map(e=>chk('e',[e.slug,e.nombre],(u.equipos||[]).includes(e.slug))).join('')||'<span class="ayuda">No hay equipos cargados.</span>'}</div></div>
+      </div>
+      <div class="u-fila">
+        <button type="button" class="btn-prim" data-a="guardar" style="width:auto;padding:10px 16px">${esNuevo?'Crear usuario':'Guardar cambios'}</button>
+        ${esNuevo?'<button type="button" class="btn-sec" data-a="cancelar">Cancelar</button>':''}
+        <span class="msg" data-msg></span>
+      </div>
+      ${esNuevo?'':`<div class="u-sec"><h3>Contraseña y baja</h3><div class="u-fila">
+        <div class="u-campo" style="flex:1;min-width:200px"><input type="text" data-f="pass" placeholder="Nueva contraseña (mín. 8)"></div>
+        <button type="button" class="btn-sec" data-a="generar">Generar</button>
+        <button type="button" class="btn-sec" data-a="clave">Cambiar contraseña</button>
+        ${u.soy_yo?'':'<button type="button" class="btn-peligro" data-a="eliminar">Eliminar usuario</button>'}
+      </div></div>`}
+    </div>
+  </details>`;
+}
+
+function conectar(card,u,esNuevo){
+  const $c=s=>card.querySelector(s), f=n=>$c(`[data-f="${n}"]`), msg=$c('[data-msg]');
+  const decir=(t,tipo)=>{ msg.className='msg '+(tipo||''); msg.textContent=t; };
+  const refrescar=()=>{
+    const admin=f('admin').checked, ventas=$c('[data-p="ventas"]').checked;
+    $c('[data-bloque="paneles"]').hidden=admin;
+    $c('[data-bloque="ventas"]').hidden=admin||!ventas;
+    const vend=f('rolv').value==='vendedor';
+    $c('[data-bloque="secc"]').hidden=vend; $c('[data-bloque="eq"]').hidden=!vend;
+  };
+  card.querySelectorAll('input,select').forEach(el=>el.addEventListener('change',refrescar));
+  card.querySelectorAll('[data-a="generar"]').forEach(b=>b.addEventListener('click',()=>{ f('pass').value=generarClave(); }));
+  const cancelar=$c('[data-a="cancelar"]'); if(cancelar) cancelar.addEventListener('click',()=>card.remove());
+
+  $c('[data-a="guardar"]').addEventListener('click', async e=>{
+    const btn=e.target;
+    const admin=f('admin').checked;
+    const paneles=[...card.querySelectorAll('[data-p]:checked')].map(i=>i.dataset.p);
+    const ventas=paneles.includes('ventas');
+    let rol=admin?'admin':(ventas?f('rolv').value:'lectura');
+    let secciones=[...card.querySelectorAll('[data-s]:checked')].map(i=>i.dataset.s);
+    const equipos=[...card.querySelectorAll('[data-e]:checked')].map(i=>i.dataset.e);
+    const nombre=f('nombre').value.trim(), email=f('email').value.trim();
+    if(!nombre) return decir('Poné el nombre.','err');
+    if(esNuevo && !/^\S+@\S+\.\S+$/.test(email)) return decir('Revisá el email.','err');
+    if(!admin && !paneles.length) return decir('Tildá al menos un panel.','err');
+    if(!admin && ventas && rol==='lectura' && !secciones.length) return decir('Marcá al menos una sección de Ventas.','err');
+    if(!admin && ventas && rol==='vendedor' && !equipos.length) return decir('Elegí el equipo de ventas.','err');
+    if(!admin && !ventas && !secciones.length) secciones=['panel'];   // no entra a Ventas igual (lo bloquea el permiso)
+    btn.disabled=true; decir('Guardando…');
+    try{
+      let id=u.id;
+      if(esNuevo){
+        const pass=f('pass').value;
+        if(pass.length<8) throw new Error('La contraseña tiene que tener al menos 8 caracteres.');
+        const r=await llamarAdmin({accion:'crear',nombre,email,password:pass,rol,secciones,equipos});
+        id=(r&&(r.id||(r.usuario&&r.usuario.id)))||null;
+        if(!id){ const l=await llamarAdmin({accion:'listar'}); const x=(l.usuarios||[]).find(z=>String(z.email).toLowerCase()===email.toLowerCase()); id=x&&x.id; }
+        if(!id) throw new Error('Se creó el usuario pero no se pudo asignar los paneles. Abrí su ficha y guardá de nuevo.');
+        mostrarCredenciales(nombre,email,pass);
+      }else{
+        const body={accion:'actualizar',id,nombre,secciones,equipos};
+        if(u.soy_yo) body.rol_actual=u.rol; else { body.rol=rol; body.activo=f('activo').checked; }
+        await llamarAdmin(body);
+      }
+      if(!admin){ const {error}=await sb.rpc('portal_guardar_paneles',{p_user:id,p_paneles:paneles}); if(error) throw new Error(error.message); }
+      decir(esNuevo?'Usuario creado.':'Cambios guardados.','ok');
+      setTimeout(cargarUsuarios, esNuevo?300:900);
+    }catch(err){ decir(err.message,'err'); btn.disabled=false; }
+  });
+
+  const clave=$c('[data-a="clave"]');
+  if(clave) clave.addEventListener('click', async ()=>{
+    const pass=f('pass').value;
+    if(pass.length<8) return decir('La contraseña tiene que tener al menos 8 caracteres.','err');
+    clave.disabled=true; decir('Guardando…');
+    try{ await llamarAdmin({accion:'password',id:u.id,password:pass}); decir('Contraseña cambiada: '+pass,'ok'); }
+    catch(err){ decir(err.message,'err'); }
+    clave.disabled=false;
+  });
+  const elim=$c('[data-a="eliminar"]');
+  if(elim) elim.addEventListener('click', async ()=>{
+    if(!confirm(`¿Eliminar a ${u.nombre} (${u.email})? No se puede deshacer.\n\nSi solo querés que deje de entrar, mejor destildá "Puede ingresar".`)) return;
+    elim.disabled=true; decir('Eliminando…');
+    try{ await llamarAdmin({accion:'eliminar',id:u.id}); decir('Usuario eliminado.','ok'); setTimeout(cargarUsuarios,700); }
+    catch(err){ decir(err.message,'err'); elim.disabled=false; }
+  });
+}
+
+function mostrarCredenciales(nombre,email,pass){
+  const link=location.origin+'/Paneldepaneles/';
+  const txt=`Panel de Paneles · SPL / Spotsline\n${link}\nEmail: ${email}\nContraseña: ${pass}`;
+  const box=document.getElementById('u-creado');
+  box.innerHTML=`<div class="u-cred"><b>Usuario creado: ${esc(nombre)}.</b> Pasale estos datos (la contraseña no se vuelve a mostrar):<br>
+    <code>${esc(link)}</code><br>Email: <code>${esc(email)}</code><br>Contraseña: <code>${esc(pass)}</code><br>
+    <button class="btn-sec" id="u-copiar" style="margin-top:8px"><i class="ti ti-copy"></i> Copiar datos</button></div>`;
+  document.getElementById('u-copiar').addEventListener('click',e=>{
+    navigator.clipboard.writeText(txt).then(()=>{ e.currentTarget.innerHTML='Copiado ✓'; }).catch(()=>{});
   });
 }
 
