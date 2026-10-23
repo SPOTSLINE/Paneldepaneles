@@ -203,3 +203,10 @@
     mostrarSinAcceso('No se pudo verificar tu acceso. Revisá tu conexión y volvé a intentar.');
   });
 })();
+
+/* Botón "← Paneles" para volver a la portada (no aparece en planta ni en la TV) */
+(function () {
+  if (window.__spVolverCargado) return; window.__spVolverCargado = true;
+  var s = document.createElement('script'); s.src = '/Paneldepaneles/volver.js'; s.defer = true;
+  (document.head || document.documentElement).appendChild(s);
+})();
