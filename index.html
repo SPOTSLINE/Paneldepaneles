@@ -377,6 +377,29 @@ function matchesEntityFull(empresa, entity){
   if(entity==='spotsline') return e.includes('SPOTSLINE');
   return true;
 }
+// Cobranzas y Proveedores: con SPL o Spotsline cuenta solo la parte de esa empresa (igual que el filtro de
+// empresa de esos paneles). Los que tienen facturas en las dos ("Ambas") se prorratean según sus facturas,
+// y los días de atraso salen de las facturas de esa empresa.
+function empCorta(e){e=String(e||'').toUpperCase();return !e?'':e.includes('SPOTSLINE')?'Spotsline':e.includes('SPL')?'SPL':'';}
+async function cuentaPorEmpresa(cfg){
+  const ent=currentEntity==='spl'?'SPL':currentEntity==='spotsline'?'Spotsline':null;
+  const rows=await leer(cfg,'select=deuda,dias_vencidos,empresa'+(ent?',facturas':''));
+  let total=0,crit=0,n=0;
+  rows.forEach(r=>{
+    let deuda=parseFloat(r.deuda)||0,dias=parseInt(r.dias_vencidos)||0;
+    if(ent){
+      let fs=r.facturas;if(typeof fs==='string'){try{fs=JSON.parse(fs);}catch(_){fs=[];}}fs=Array.isArray(fs)?fs:[];
+      const mias=fs.filter(f=>empCorta(f.emp)===ent),otras=fs.filter(f=>empCorta(f.emp)&&empCorta(f.emp)!==ent);
+      const emp=r.empresa==='Ambas'?'Ambas':empCorta(r.empresa);
+      if(emp!==ent&&!(emp==='Ambas'&&mias.length))return;
+      if(emp==='Ambas'){const a=mias.reduce((s,f)=>s+(+f.monto||0),0),b=otras.reduce((s,f)=>s+(+f.monto||0),0);
+        deuda=a+b?deuda*a/(a+b):deuda*mias.length/Math.max(1,mias.length+otras.length);
+        const v=mias.map(f=>f.vto).filter(x=>x&&x!=='-').sort();dias=v.length?Math.round((Date.now()-new Date(v[0]))/86400000):0;}
+    }
+    n++;total+=deuda;if(dias>45)crit++;
+  });
+  return {total,crit,n};
+}
 function matchesEntitySimple(empresa, entity){
   if(entity==='todas') return true;
   const e=(empresa||'').toUpperCase();
@@ -443,14 +466,12 @@ const FETCHERS={
     return {note:mesCorto(mes), kpis:[{val:fmtMoney(venta),lbl:'Venta del mes'},{val:fmtMoney(fact),lbl:'Facturación del mes'},{val:fmtMoney(pend),lbl:'Pendiente total'}]};
   },
   async proveedores(cfg){
-    const rows=(await leer(cfg,'select=deuda,dias_vencidos,empresa')).filter(r=>matchesEntitySimple(r.empresa,currentEntity));
-    let deuda=0,crit=0; rows.forEach(r=>{ deuda+=parseFloat(r.deuda)||0; if((parseInt(r.dias_vencidos)||0)>45) crit++; });
-    return {kpis:[{val:fmtMoney(deuda),lbl:'Deuda total'},{val:crit,lbl:'Vencidos críticos'},{val:rows.length,lbl:'Proveedores'}]};
+    const r=await cuentaPorEmpresa(cfg);
+    return {kpis:[{val:fmtMoney(r.total),lbl:'Deuda total'},{val:r.crit,lbl:'Vencidos críticos'},{val:r.n,lbl:'Proveedores'}]};
   },
   async cobranzas(cfg){
-    const rows=(await leer(cfg,'select=deuda,dias_vencidos,empresa')).filter(r=>matchesEntitySimple(r.empresa,currentEntity));
-    let total=0,mora=0; rows.forEach(r=>{ total+=parseFloat(r.deuda)||0; if((parseInt(r.dias_vencidos)||0)>45) mora++; });
-    return {kpis:[{val:fmtMoney(total),lbl:'Por cobrar'},{val:mora,lbl:'Clientes en mora crítica'},{val:rows.length,lbl:'Clientes'}]};
+    const r=await cuentaPorEmpresa(cfg);
+    return {kpis:[{val:fmtMoney(r.total),lbl:'Por cobrar'},{val:r.crit,lbl:'Clientes en mora crítica'},{val:r.n,lbl:'Clientes'}]};
   },
   async ausentismo(cfg){
     const r=await leerFila(cfg,'Ausentismo','resumen_v1');
