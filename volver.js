@@ -1,10 +1,16 @@
 /* Panel de Paneles: botón "← Paneles" para volver a la portada.
    Lo carga candado.js en cada panel (y el Panel de Ventas con su propia línea).
-   No aparece en los celulares de planta ni en la TV (#ot y #pantalla de Producción). */
+   No aparece en los celulares de planta ni en la TV (#ot y #pantalla de Producción).
+   También carga mejoras.js: el botón "💡 Mejoras", igual en todos los paneles. */
 (function () {
   'use strict';
   if (window.__spVolver) return; window.__spVolver = true;
   if (window.top !== window) return;
+  if (!window.__spMejorasCargado && !/^\/Paneldepaneles(\/|$)/i.test(location.pathname)) {
+    window.__spMejorasCargado = true;
+    var sm = document.createElement('script'); sm.src = '/Paneldepaneles/mejoras.js'; sm.defer = true;
+    (document.head || document.documentElement).appendChild(sm);
+  }
   if (/^\/Paneldepaneles(\/|$)/i.test(location.pathname)) return;
   var PORTADA = '/Paneldepaneles/';
   var vistaPlanta = function () {

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migrador de mejoras · Panel de Paneles</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#242424;--border:#333;--text:#f0f0f0;--text2:#aaa;--text3:#666;--yellow:#f5c400;--red:#e74c3c;--green:#2ecc71;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:980px;margin:0 auto;padding:28px 16px 60px}
+.eyebrow{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+h1{font-size:22px;margin:4px 0 6px;padding-bottom:12px;border-bottom:1px solid var(--yellow)}
+p{color:var(--text2);font-size:14px;line-height:1.5;margin:12px 0}
+.caja{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin:16px 0}
+button{background:var(--yellow);color:#111;border:none;border-radius:8px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer;margin-right:8px}
+button.sec{background:none;color:var(--text);border:1px solid var(--border)}
+button:disabled{opacity:.5;cursor:wait}
+.tabla-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:var(--bg3);color:var(--text2);font:10px var(--mono);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+td.n{text-align:right;font-family:var(--mono)}
+td.t{max-width:420px;white-space:pre-wrap;word-break:break-word}
+.ok{color:var(--green)} .err{color:var(--red)} .esp{color:var(--text3)}
+a{color:var(--yellow)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">SPL / Spotsline · Mejoras unificadas</div>
+  <h1>Migrador de pedidos de mejora</h1>
+  <p>Lee los pedidos de mejora que cada panel guardaba por su cuenta y los copia a la bandeja única (tabla <b>mejoras</b>).
+    <b>No borra nada</b> de los paneles y no duplica: si se corre dos veces, lo que ya se copió se saltea. Hace falta haber corrido <b>4_mejoras.sql</b> y entrar como administrador.</p>
+
+  <div id="estado" class="caja">Verificando sesión…</div>
+
+  <div id="app" hidden>
+    <div class="caja">
+      <button id="b-leer" type="button">1. Leer los pedidos de los paneles</button>
+      <button id="b-importar" type="button" disabled>2. Copiar a la bandeja única</button>
+      <div id="res" style="margin-top:12px"></div>
+    </div>
+    <div id="detalle"></div>
+  </div>
+</div>
+<script>
+const sb = window.supabase.createClient('https://fzylibnqqjznaddgpsjt.supabase.co','sb_publishable_zHONcBODl6nbPiLS3TSrZw_D8MVJqeE');
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let FILAS=[];
+
+/* ---- normalizadores ---- */
+const TIPO=t=>{ t=String(t||'').trim(); if(/^dud|^consul/i.test(t)) return 'Consulta'; return ['Mejora','Error','Idea','Consulta'].find(x=>x.toLowerCase()===t.toLowerCase())||'Mejora'; };
+const PRIO=p=>{ p=String(p||'').trim().toLowerCase(); return ({baja:'Baja',normal:'Normal',media:'Normal',alta:'Alta',urgente:'Urgente'})[p]||'Normal'; };
+const ESTADO=e=>{ e=String(e||'').trim().toLowerCase();
+  if(e==='cerrado'||e==='resuelto'||e==='hecho') return 'resuelto';
+  if(e==='en curso'||e==='en_curso') return 'en curso';
+  if(e==='descartado') return 'descartado';
+  return 'pendiente'; };
+const ISO=v=>{ if(!v) return null; const d=new Date(v); return isNaN(d)?null:d.toISOString(); };
+const RESP=(lista)=>(lista||[]).map(r=>({por:r.por||'', en:ISO(r.en||r.fecha)||undefined, texto:r.texto||'', estado:r.estado?ESTADO(r.estado):undefined}))
+  .map(r=>JSON.parse(JSON.stringify(r)));
+
+/* ---- lectores de cada panel ---- */
+async function fila(tabla,id){
+  const {data,error}=await sb.from(tabla).select('valor').eq('id',id).maybeSingle();
+  if(error) throw new Error(tabla+': '+error.message);
+  return data&&data.valor;
+}
+const FUENTES=[
+  { panel:'cobranzas', donde:'objetivos_cobranza · pedidos_mejora', leer:async()=>{
+      const v=await fila('objetivos_cobranza','pedidos_mejora');
+      return ((v&&v.lista)||[]).map(x=>({origen:'cobranzas:'+(x.id||x.n), tipo:TIPO(x.tipo), prioridad:PRIO(x.prio), estado:ESTADO(x.estado),
+        texto:x.texto, pantalla:x.ctx||'', creado_nombre:x.por||'', creado_en:ISO(x.en), respuestas:RESP(x.respuestas), _n:x.n})); } },
+  { panel:'eerr', donde:'eerr · pedidos', leer:async()=>{
+      const v=await fila('eerr','pedidos');
+      return ((v&&v.lista)||[]).map(x=>({origen:'eerr:'+(x.id||x.n), tipo:TIPO(x.tipo), prioridad:PRIO(x.prio), estado:ESTADO(x.estado),
+        texto:x.texto, pantalla:x.ctx||'', creado_nombre:x.por||'', creado_en:ISO(x.en), respuestas:RESP(x.respuestas), _n:x.n})); } },
+  { panel:'patrimonial', donde:'patrimonial · datos_v1 → pedidos:mejoras', leer:async()=>{
+      const v=await fila('patrimonial','datos_v1');
+      let d=v&&v.datos&&v.datos['pedidos:mejoras']; if(typeof d==='string'){ try{ d=JSON.parse(d); }catch(e){ d=null; } }
+      return ((d&&d.items)||[]).map(x=>({origen:'patrimonial:'+x.id, tipo:TIPO(x.tipo), prioridad:PRIO(x.prioridad), estado:ESTADO(x.estado),
+        texto:x.texto, pantalla:x.pantalla||'', creado_nombre:x.autor||'', creado_en:ISO(x.creado), actualizado_en:ISO(x.cerradoEn),
+        respuestas:x.cierreNota?[{por:'', en:ISO(x.cerradoEn)||undefined, texto:x.cierreNota, estado:'resuelto'}].map(r=>JSON.parse(JSON.stringify(r))):[], _n:x.id})); } },
+  { panel:'ausentismo', donde:'panel_horas · mejoras_v1', leer:async()=>{
+      const v=await fila('panel_horas','mejoras_v1');
+      return ((v&&v.items)||[]).map(x=>({origen:'ausentismo:'+x.id, tipo:TIPO(x.tipo), prioridad:PRIO(x.prioridad), estado:ESTADO(x.estado),
+        texto:x.texto, pantalla:x.pantalla||'', creado_nombre:x.autor||'', creado_en:ISO(x.fecha), actualizado_en:ISO(x.cerradoFecha),
+        respuestas:(x.estado==='cerrado'&&(x.nota||x.cerradoPor))?[{por:x.cerradoPor||'', en:ISO(x.cerradoFecha)||undefined, texto:x.nota||'', estado:'resuelto'}].map(r=>JSON.parse(JSON.stringify(r))):[], _n:x.id})); } },
+  { panel:'produccion', donde:'panel_produccion · buzon/*', leer:async()=>{
+      const {data,error}=await sb.from('panel_produccion').select('id,valor').like('id','buzon/%');
+      if(error) throw new Error('panel_produccion: '+error.message);
+      return (data||[]).filter(r=>r.valor).map(r=>{ const x=r.valor; return {origen:'produccion:'+(x.id||r.id.slice(6)), tipo:TIPO(x.tipo), prioridad:PRIO(x.prioridad),
+        estado:ESTADO(x.estado), texto:x.texto, pantalla:x.pantalla||'', creado_nombre:x.perfil||'', creado_en:ISO(x.ts), respuestas:[], _n:x.id||r.id}; }); } }
+];
+
+async function leer(){
+  const b=$('#b-leer'); b.disabled=true; $('#res').innerHTML='<span class="esp">Leyendo…</span>'; FILAS=[];
+  const resumen=[];
+  for(const f of FUENTES){
+    try{
+      const l=(await f.leer()).filter(x=>String(x.texto||'').trim()).map(x=>({...x, panel:f.panel}));
+      FILAS.push(...l);
+      resumen.push(`<tr><td>${esc(f.panel)}</td><td class="esp">${esc(f.donde)}</td><td class="n">${l.length}</td><td class="n">${l.filter(x=>x.estado==='pendiente'||x.estado==='en curso').length}</td><td class="ok">OK</td></tr>`);
+    }catch(e){
+      resumen.push(`<tr><td>${esc(f.panel)}</td><td class="esp">${esc(f.donde)}</td><td class="n">—</td><td class="n">—</td><td class="err">${esc(e.message)}</td></tr>`);
+    }
+  }
+  b.disabled=false;
+  $('#res').innerHTML=`<div class="tabla-wrap"><table><thead><tr><th>Panel</th><th>Dónde estaban</th><th>Pedidos</th><th>Abiertos</th><th></th></tr></thead><tbody>${resumen.join('')}</tbody></table></div>
+    <p>Ventas, Proveedores e Intereses y gastos bancarios no tenían pedidos de mejora propios.</p>`;
+  $('#detalle').innerHTML=FILAS.length?`<div class="tabla-wrap"><table><thead><tr><th>Panel</th><th>#</th><th>Tipo</th><th>Prioridad</th><th>Estado</th><th>Pedido</th><th>Por</th><th>Fecha</th></tr></thead><tbody>${
+    FILAS.map(x=>`<tr><td>${esc(x.panel)}</td><td class="n">${esc(x._n)}</td><td>${esc(x.tipo)}</td><td>${esc(x.prioridad)}</td><td>${esc(x.estado)}</td><td class="t">${esc(x.texto)}</td><td>${esc(x.creado_nombre)}</td><td>${esc((x.creado_en||'').slice(0,10))}</td></tr>`).join('')}</tbody></table></div>`:'';
+  $('#b-importar').disabled=!FILAS.length;
+}
+
+async function importar(){
+  const b=$('#b-importar'); b.disabled=true;
+  const filas=FILAS.map(({_n,...x})=>x);
+  const {data,error}=await sb.rpc('mej_importar',{p_filas:filas});
+  if(error){ $('#res').insertAdjacentHTML('beforeend',`<p class="err">No se pudo copiar: ${esc(error.message)}</p>`); b.disabled=false; return; }
+  $('#res').insertAdjacentHTML('beforeend',`<p class="ok">Listo: se copiaron ${data} pedido${data===1?'':'s'} nuevos a la bandeja (${filas.length-data} ya estaban). <a href="./#mejoras">Abrir la bandeja de mejoras</a></p>`);
+}
+
+(async()=>{
+  const {data}=await sb.auth.getSession();
+  if(!data||!data.session){ $('#estado').innerHTML='No hay sesión. <a href="./?volver=/Paneldepaneles/migrador_mejoras.html">Ingresá al Panel de Paneles</a> y volvé a abrir esta página.'; return; }
+  const {data:yo,error}=await sb.rpc('mej_yo');
+  if(error){ $('#estado').innerHTML='<span class="err">Falta correr 4_mejoras.sql en Supabase ('+esc(error.message)+').</span>'; return; }
+  if(!yo||!yo.es_admin){ $('#estado').textContent='Esta página es solo para administradores.'; return; }
+  $('#estado').innerHTML='Sesión: <b>'+esc(yo.nombre)+'</b> (administrador).';
+  $('#app').hidden=false;
+  $('#b-leer').onclick=leer; $('#b-importar').onclick=importar;
+})();
+</script>
+</body>
+</html>

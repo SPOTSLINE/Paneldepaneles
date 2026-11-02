@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="mejoras.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 [hidden]{display:none!important}
@@ -70,6 +71,14 @@ html:not([data-login="sinacceso"]) #sinacceso{display:none}
 .rail .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#555}
 .rail .dot.ok{background:#3FB37F}.rail .dot.err{background:#E3775F}
 .rail .ext{opacity:.45;font-size:12px}
+/* ===== Mejoras (bandeja única) ===== */
+.mj-bad{min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:#E3533B;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.mj-bad.gris{background:rgba(255,255,255,.14);color:var(--railink)}
+.btn-sec .mj-bad.gris{background:var(--panel2);color:var(--muted)}
+.mj-aviso{white-space:nowrap;font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:99px;background:#E3533B;color:#fff;cursor:pointer}
+.mj-aviso.gris{background:var(--lampbg);color:var(--lampink);font-weight:600}
+.mj-aviso:hover{filter:brightness(1.08)}
+#btn-mejoras-cel{display:none}
 .rail .grp{font-size:12px;opacity:.5;padding:18px 10px 6px}
 .rail .foot{margin-top:auto;font-size:12px;padding:14px 10px 0;display:flex;flex-direction:column;gap:8px}
 .rail .foot .quien{opacity:.75}
@@ -193,6 +202,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
   .rail.abierto .grp{display:block;width:100%;padding:14px 10px 4px}
   .rail.abierto a,.rail.abierto button.lnk{width:100%;padding:9px 10px;font-size:15px}
   .rail .ext{display:none}
+  #btn-mejoras-cel{display:inline-flex}
   .rail .foot{margin-top:6px;width:100%;flex-direction:column;align-items:stretch;padding:12px 10px 0;border-top:1px solid rgba(255,255,255,.1)}
   .vc-sel{width:100%}
   /* Contenido */
@@ -256,6 +266,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     <button type="button" class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="rail">☰ Paneles</button>
     <div class="brandsub">Panel de Paneles</div>
     <a href="#" class="on" aria-current="page">General</a>
+    <button type="button" class="lnk" id="btn-mejoras" title="Pedidos de mejora de todos los paneles"><span>💡 Mejoras</span><span class="mj-bad" hidden></span></button>
     <div class="grp">Paneles</div>
     <div id="statusRail" style="display:contents"></div>
     <div id="rail-admin" hidden style="display:contents">
@@ -274,6 +285,7 @@ input[type=checkbox]:disabled{cursor:not-allowed}
     <p class="lead">Resumen de cada panel con los datos más importantes. Tocá un recuadro para abrir el panel.</p>
     <div class="barra">
       <div class="seg" id="entityFilter" role="group" aria-label="Empresa"></div>
+      <button class="btn-sec" id="btn-mejoras-cel" type="button">💡 <span class="corto">Mejoras</span> <span class="mj-bad" hidden></span></button>
       <button class="btn-sec" id="btn-datos" type="button"><span class="largo">Elegir datos</span><span class="corto">Datos</span></button>
       <button class="btn-sec" id="btn-orden" type="button"><span class="largo">Ordenar y activar</span><span class="corto">Ordenar</span></button>
       <button class="btn-sec" id="refreshBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg> <span class="largo">Actualizar</span></button>
@@ -562,7 +574,7 @@ function renderCards(){
       : `<div class="nota">${esc(p.nota||'')}</div>`;
     const ojo=p.fetcher?`<span class="ojo" role="button" tabindex="0" data-ojo="${p.id}" title="${tapado(p)?'Mostrar los totales':'Ocultar los totales'}" aria-label="${tapado(p)?'Mostrar los totales':'Ocultar los totales'}">${tapado(p)?OJO_CERRADO:OJO_ABIERTO}</span>`:'';
     return `<a class="gcard" href="${p.url}" id="card-${p.id}">
-      <h3><span>${esc(p.name)}</span><span class="der">${ojo}<span class="estado ${p.fetcher?'':'ok'}" id="badge-${p.id}">${p.fetcher?'Sincronizando':'Panel'}</span></span></h3>
+      <h3><span>${esc(p.name)}</span><span class="der"><span class="mj-aviso" role="button" tabindex="0" data-mj="${p.id}" hidden></span>${ojo}<span class="estado ${p.fetcher?'':'ok'}" id="badge-${p.id}">${p.fetcher?'Sincronizando':'Panel'}</span></span></h3>
       ${cuerpo}
       <div class="pie"><span id="updated-${p.id}">${p.fetcher?'—':''}</span><span class="abrir">Abrir panel</span></div>
     </a>`;
@@ -578,7 +590,53 @@ function renderCards(){
     b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') toggle(e); });
   });
   vis.filter(p=>p.fetcher&&ULTIMOS[p.id]).forEach(p=>pintarKpis(p,ULTIMOS[p.id]));
+  grid.querySelectorAll('[data-mj]').forEach(b=>{
+    const abrirMj=e=>{ e.preventDefault(); e.stopPropagation(); abrirMejoras(b.dataset.mj); };
+    b.addEventListener('click',abrirMj);
+    b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') abrirMj(e); });
+  });
+  pintarAvisosMejoras();
 }
+
+/* =========================================================
+   MEJORAS — bandeja única (mejoras.js + tabla public.mejoras)
+   Rojo = novedades que no viste (pedidos nuevos o respuestas).
+   Amarillo = pedidos abiertos, sin novedades.
+   ========================================================= */
+let MJ_RESUMEN=null;
+function abrirMejoras(panel){
+  if(!window.SPMejoras){ esperarMejoras().then(ok=>{ if(ok) abrirMejoras(panel); }); return; }
+  document.getElementById('rail').classList.remove('abierto');
+  SPMejoras.abrir({todos:true, panel:panel||''});
+}
+function esperarMejoras(){
+  return new Promise(res=>{ let n=0; const t=setInterval(()=>{ if(window.SPMejoras||++n>50){ clearInterval(t); res(!!window.SPMejoras); } },200); if(window.SPMejoras){ clearInterval(t); res(true); } });
+}
+async function actualizarMejoras(){
+  if(!window.SPMejoras) return;
+  try{ MJ_RESUMEN=await SPMejoras.resumen(); }catch(e){ MJ_RESUMEN=null; console.warn('Mejoras:', e.message||e); }
+  pintarAvisosMejoras();
+}
+function pintarAvisosMejoras(){
+  const r=MJ_RESUMEN, vis=new Set(VISIBLES.map(p=>p.id));
+  let nuevos=0, abiertos=0;
+  if(r) Object.entries(r.por_panel).forEach(([id,c])=>{ if(vis.has(id)||r.es_admin){ nuevos+=c.nuevos; abiertos+=c.abiertos; } });
+  document.querySelectorAll('#btn-mejoras .mj-bad, #btn-mejoras-cel .mj-bad').forEach(b=>{
+    const n=nuevos||abiertos; b.hidden=!n; b.textContent=n; b.classList.toggle('gris',!nuevos);
+    b.title=nuevos?`${nuevos} novedad${nuevos===1?'':'es'} sin ver`:`${abiertos} pedido${abiertos===1?'':'s'} abierto${abiertos===1?'':'s'}`;
+  });
+  document.querySelectorAll('[data-mj]').forEach(b=>{
+    const c=r&&r.por_panel[b.dataset.mj];
+    if(!c||(!c.nuevos&&!c.abiertos)){ b.hidden=true; return; }
+    b.hidden=false; b.classList.toggle('gris',!c.nuevos);
+    b.textContent=c.nuevos?`💡 ${c.nuevos} nueva${c.nuevos===1?'':'s'}`:`💡 ${c.abiertos}`;
+    b.title=(c.nuevos?`${c.nuevos} novedad${c.nuevos===1?'':'es'} sin ver · `:'')+`${c.abiertos} pedido${c.abiertos===1?'':'s'} de mejora abierto${c.abiertos===1?'':'s'}. Tocá para verlos.`;
+  });
+}
+document.getElementById('btn-mejoras').addEventListener('click',()=>abrirMejoras(''));
+document.getElementById('btn-mejoras-cel').addEventListener('click',()=>abrirMejoras(''));
+window.addEventListener('sp-mejoras-cerrada',()=>{ if(location.hash==='#mejoras') history.replaceState(null,'',location.pathname+location.search); actualizarMejoras(); });
+setInterval(()=>{ if(document.visibilityState==='visible' && document.documentElement.dataset.login==='ok') actualizarMejoras(); },180000);
 /* Modo "Ordenar y activar": todos los recuadros, con flechas, arrastre e interruptor */
 function renderEditar(grid){
   grid.innerHTML=VISIBLES.map((p,i)=>`<div class="gcard ${panelVisible(p)?'':'inactivo'}" draggable="true" data-id="${p.id}">
@@ -710,6 +768,8 @@ async function entrar(session, tipo){
   if(volver && /^\/[A-Za-z0-9_\-]/.test(volver) && !volver.startsWith('//')){ location.replace(volver); return; }
   mostrar('ok');
   renderStatusRail(); renderEntityFilter(); renderCards(); loadAll();
+  const arrancarMj=()=>{ actualizarMejoras(); if(location.hash==='#mejoras') abrirMejoras(''); };
+  esperarMejoras().then(ok=>{ if(ok) arrancarMj(); });
   if(sim && !VISIBLES.length) document.getElementById('grid').innerHTML='<div class="vacio">Este usuario no tiene ningún panel habilitado: al entrar vería el aviso "Sin paneles asignados".</div>';
 }
 
