@@ -851,14 +851,20 @@ const PROD_PLANT={
 const COB_PERM=[['tab_cartera','Solapa Cartera'],['tab_cumplimiento','Solapa Cumplimiento de pagos'],['tab_objetivos','Solapa Objetivos de cobranza'],['tab_ayuda','Solapa Ayuda'],
   ['actualizar','Actualizar datos (subir Excel de Odoo)'],['exportar','Exportar a Excel'],['reporte','Reporte y mail semanal'],['editar_objetivos','Editar objetivos'],
   ['mails_vendedores','Mails de vendedores'],['plantillas','Editar plantilla de mail']];
+const PAT_EMPRESAS=[['spl','SPL'],['spotsline','Spotsline']];
+const PAT_ACC=[['editar','Cargar y corregir valores a mano'],['importar','Importar Cash Flow, subir stock, sincronizar paneles y TC'],['congelar','Congelar y descongelar meses'],
+  ['comentarios','Escribir las notas del mes'],['exportar','Exportar Excel / PDF y bajar archivos cargados'],['backup','Backup y restaurar backup'],['registro','Ver el registro de cambios']];
+const PAT_PLANT={lectura:{nombre:'Solo ver',acc:['exportar','registro']},carga:{nombre:'Carga (sin backup)',acc:['editar','importar','comentarios','exportar','registro']},
+  total:{nombre:'Responsable (todo)',acc:PAT_ACC.map(a=>a[0])}};
 const cobDefecto=rol=>Object.fromEntries(COB_PERM.map(([k])=>[k, k.startsWith('tab_')||k==='reporte'?true:rol!=='vendedor']));
 const CFG_DEF={
   proveedores:()=>({rol:'usuario',usuario:''}),
   ausentismo:()=>({admin:false,tabs:['detalle'],empresas:[],sectores:[],acciones:{}}),
   produccion:()=>({plantilla:'gerencia',...JSON.parse(JSON.stringify(PROD_PLANT.gerencia)),nombre:undefined}),
-  cobranzas:()=>({rol:'cobranzas',vendedor_nombre:'',usuario:'',cartera:'todos',permisos:cobDefecto('cobranzas')})
+  cobranzas:()=>({rol:'cobranzas',vendedor_nombre:'',usuario:'',cartera:'todos',permisos:cobDefecto('cobranzas')}),
+  patrimonial:()=>({empresas:[],acciones:{exportar:true,registro:true}})
 };
-const PANELES_CFG=['proveedores','ausentismo','produccion','cobranzas'];
+const PANELES_CFG=['proveedores','ausentismo','produccion','cobranzas','patrimonial'];
 async function cargarListasPaneles(){
   try{ const {data}=await sb.from('panel_horas').select('valor').eq('id','personal_v1').maybeSingle();
     const rows=data&&data.valor&&Array.isArray(data.valor.rows)?data.valor.rows:[];
@@ -990,7 +996,7 @@ function cfgDe(u,panel){ const c=(CONFIGS[u.id]||{})[panel]; return c?JSON.parse
 function bloqueCfg(panel,u,pans,admin){
   const c=cfgDe(u,panel);
   const chk=(attr,val,lbl,on)=>`<label class="u-check"><input type="checkbox" ${attr}="${esc(val)}" ${on?'checked':''}> ${esc(lbl)}</label>`;
-  const titulo={proveedores:'Permisos dentro de Proveedores',ausentismo:'Permisos dentro de Ausentismo',produccion:'Permisos dentro de Producción',cobranzas:'Permisos dentro de Cobranzas'}[panel];
+  const titulo={proveedores:'Permisos dentro de Proveedores',ausentismo:'Permisos dentro de Ausentismo',produccion:'Permisos dentro de Producción',cobranzas:'Permisos dentro de Cobranzas',patrimonial:'Permisos dentro de Situación Patrimonial'}[panel];
   let h='';
   if(panel==='proveedores'){
     h=`<div class="u-campos">
@@ -1027,6 +1033,12 @@ function bloqueCfg(panel,u,pans,admin){
       <div class="u-grid" data-sub="cob-cart" ${todos?'hidden':''}>${VENDEDORES_COB.map(v=>chk('data-cob-cart',v,v,Array.isArray(c.cartera)&&c.cartera.includes(v))).join('')}</div>
       <div class="u-lbl" style="margin:12px 0 6px">Solapas y acciones</div><div class="u-grid">${COB_PERM.map(([k,l])=>chk('data-cob-p',k,l,!!(c.permisos||{})[k])).join('')}</div>`;
   }
+  if(panel==='patrimonial'){
+    const acc=c.acciones||{};
+    h=`<div class="u-campos"><div class="u-campo"><label>Plantilla (completa lo de abajo)</label><select data-c="plantilla"><option value="">Personalizado</option>${Object.entries(PAT_PLANT).map(([k,v])=>`<option value="${k}">${esc(v.nombre)}</option>`).join('')}</select></div></div>
+      <div class="u-lbl" style="margin:12px 0 6px">Empresas que ve (sin tildar = las dos y el Conjunto)</div><div class="u-grid">${PAT_EMPRESAS.map(([k,l])=>chk('data-pat-emp',k,l,(c.empresas||[]).includes(k))).join('')}</div>
+      <div class="u-lbl" style="margin:12px 0 6px">Qué puede hacer (sin tildar = solo ver)</div><div class="u-grid">${PAT_ACC.map(([k,l])=>chk('data-pat-acc',k,l,!!acc[k])).join('')}</div>`;
+  }
   return `<div class="u-sec ventas" data-cfg="${panel}" ${admin||!pans.includes(panel)?'hidden':''}><h3>${titulo}</h3>${h}</div>`;
 }
 function leerCfg(card,panel){
@@ -1038,6 +1050,8 @@ function leerCfg(card,panel){
   if(panel==='produccion') return {plantilla:q('[data-c="plantilla"]').value, area:q('[data-c="area"]').value,
     vistas:q('[data-c="todas"]').checked?'*':qa('[data-prod-v]:checked').map(i=>i.dataset.prodV),
     permisos:Object.fromEntries(qa('[data-prod-p]').map(i=>[i.dataset.prodP,i.checked]))};
+  if(panel==='patrimonial') return {empresas:qa('[data-pat-emp]:checked').map(i=>i.dataset.patEmp),
+    acciones:Object.fromEntries(qa('[data-pat-acc]').map(i=>[i.dataset.patAcc,i.checked]))};
   if(panel==='cobranzas'){ const rol=q('[data-c="rol"]').value;
     const permisos=Object.fromEntries(qa('[data-cob-p]').map(i=>[i.dataset.cobP,i.checked])); permisos.usuarios=false;
     return {rol, vendedor_nombre:q('[data-c="vendedor_nombre"]').value.trim(), usuario:q('[data-c="usuario"]').value.trim().toLowerCase(),
@@ -1053,6 +1067,10 @@ function conectarCfg(card){
     pr.querySelectorAll('[data-prod-v]').forEach(i=>{ i.checked=t.vistas==='*'||t.vistas.includes(i.dataset.prodV); });
     pr.querySelectorAll('[data-prod-p]').forEach(i=>{ i.checked=!!t.permisos[i.dataset.prodP]; }); });
   pr.querySelectorAll('[data-prod-v],[data-prod-p],[data-c="area"],[data-c="todas"]').forEach(i=>i.addEventListener('change',e=>{ if(e.isTrusted) pr.querySelector('[data-c="plantilla"]').value=''; }));
+  const pa=sec('patrimonial');
+  pa.querySelector('[data-c="plantilla"]').addEventListener('change',e=>{ const t=PAT_PLANT[e.target.value]; if(!t) return;
+    pa.querySelectorAll('[data-pat-acc]').forEach(i=>{ i.checked=t.acc.includes(i.dataset.patAcc); }); });
+  pa.querySelectorAll('[data-pat-acc]').forEach(i=>i.addEventListener('change',e=>{ if(e.isTrusted) pa.querySelector('[data-c="plantilla"]').value=''; }));
   const cb=sec('cobranzas');
   cb.querySelector('[data-c="cartera_todos"]').addEventListener('change',e=>{ cb.querySelector('[data-sub="cob-cart"]').hidden=e.target.checked; });
   cb.querySelector('[data-c="rol"]').addEventListener('change',e=>{ const d=cobDefecto(e.target.value); cb.querySelectorAll('[data-cob-p]').forEach(i=>{ i.checked=!!d[i.dataset.cobP]; });
