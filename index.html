@@ -367,7 +367,9 @@ const PANELS = [
     supabase:{ ...SB_NUEVO, table:'panel_produccion', rowId:'resumen_v1' } },
   { id:'ausentismo', name:'Ausentismo', icon:'ti-calendar-off', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-de-Ausentismo/panel_horas_spotsline.html', fetcher:'ausentismo',
-    supabase:{ ...SB_NUEVO, table:'panel_horas', rowId:'dataset_v1' } }
+    supabase:{ ...SB_NUEVO, table:'panel_horas', rowId:'dataset_v1' } },
+  { id:'planificacion', name:'Planificación de Ventas', icon:'ti-list-check', accent:'--yellow', accentDim:'--yellow-dim',
+    url:'https://spotsline.github.io/Panel-Planificacion/' }
 ];
 
 let VISIBLES = [];          // paneles que puede ver el usuario
