@@ -365,7 +365,7 @@ const PANELS = [
   { id:'produccion', name:'Producción', icon:'ti-building-factory-2', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-produccion/', fetcher:'produccion',
     supabase:{ ...SB_NUEVO, table:'panel_produccion', rowId:'resumen_v1' } },
-  { id:'ausentismo', name:'Ausentismo', icon:'ti-calendar-off', accent:'--yellow', accentDim:'--yellow-dim',
+  { id:'ausentismo', name:'RRHH · Personal', icon:'ti-users', accent:'--yellow', accentDim:'--yellow-dim',
     url:'https://spotsline.github.io/Panel-de-Ausentismo/panel_horas_spotsline.html', fetcher:'ausentismo',
     supabase:{ ...SB_NUEVO, table:'panel_horas', rowId:'dataset_v1' } },
   { id:'planificacion', name:'Planificación de Ventas', icon:'ti-list-check', accent:'--yellow', accentDim:'--yellow-dim',
@@ -830,15 +830,15 @@ const SECCIONES_VENTAS=[['panel','Panel General'],['venta','Venta'],['facturacio
   ['stock','Stock'],['cotizador','Cotizador'],['unidades','Unidades'],['margen','Costo y Margen'],['clientes','Clientes'],['acuerdos','Acuerdos'],
   ['ofertas','Ofertas']];
 const NOMBRE_CORTO={ventas:'Ventas',patrimonial:'Patrimonial',eerr:'EERR',proveedores:'Proveedores',cobranzas:'Cobranzas',
-  cheques:'Cheques',produccion:'Producción',ausentismo:'Ausentismo'};
+  cheques:'Cheques',produccion:'Producción',ausentismo:'RRHH'};
 let USUARIOS=[], EQUIPOS=[], CONFIGS={}, SECTORES_AUS=[], VENDEDORES_COB=[];
 
 /* Permisos internos de cada panel (copiados de cómo funciona cada uno por dentro) */
 const AUS_TABS=[['detalle','Grilla diaria'],['indicadores','Indicadores'],['ausentismo','Ausentismo'],['liquidacion','Liquidación'],['premio','Premio cuatrimestral'],
-  ['personal','Personal'],['vacaciones','Vacaciones'],['ropa','Entrega de ropa'],['polivalencia','Polivalencia'],['pantalla','Pantalla (TV de planta)'],['documentacion','Documentación']];
+  ['personal','Personal'],['vacaciones','Vacaciones'],['ropa','Entrega de ropa'],['polivalencia','Polivalencia'],['pantalla','Pantalla (TV de planta)'],['documentacion','Documentación'],['portal','Portal del empleado (pedidos)'],['prestamos','Préstamos']];
 const AUS_ACC=[['novedades','Cargar novedades (CSV de Lenox / corregir un día)'],['premio','Editar el premio cuatrimestral'],['personal','Editar el listado de personal'],
   ['vacaciones','Cargar solicitudes de vacaciones'],['vacAutorizar','Autorizar vacaciones (jefe)'],['ropa','Gestionar la entrega de ropa'],['datosVer','Ver datos personales (DNI, CUIL, domicilio…)'],
-  ['datosEditar','Editar datos personales'],['polivalencia','Editar la matriz de polivalencia'],['pantalla','Publicar avisos y configurar la pantalla'],['documentos','Subir y ocultar documentos']];
+  ['datosEditar','Editar datos personales'],['polivalencia','Editar la matriz de polivalencia'],['pantalla','Publicar avisos y configurar la pantalla'],['documentos','Subir y ocultar documentos'],['portal','Portal del empleado: responder pedidos, avisos, recibos y claves'],['prestamos','Registrar préstamos y cobros']];
 const AUS_EMPRESAS=['SPOTSLINE SRL','SPL DISTRIBUIDORA'];
 const PROD_VISTAS=[['general','General'],['planta','Planta en vivo'],['pantalla','Pantalla en vivo (TV)'],['plan','Planificación'],['taller','Fábrica (taller)'],
   ['pintura','Pintura'],['armado','Armado'],['indicadores','Indicadores'],['maestro','Maestro'],['auditoria','Registro de cambios'],['instructivo','Instructivo']];
@@ -998,7 +998,7 @@ function cfgDe(u,panel){ const c=(CONFIGS[u.id]||{})[panel]; return c?JSON.parse
 function bloqueCfg(panel,u,pans,admin){
   const c=cfgDe(u,panel);
   const chk=(attr,val,lbl,on)=>`<label class="u-check"><input type="checkbox" ${attr}="${esc(val)}" ${on?'checked':''}> ${esc(lbl)}</label>`;
-  const titulo={proveedores:'Permisos dentro de Proveedores',ausentismo:'Permisos dentro de Ausentismo',produccion:'Permisos dentro de Producción',cobranzas:'Permisos dentro de Cobranzas',patrimonial:'Permisos dentro de Situación Patrimonial'}[panel];
+  const titulo={proveedores:'Permisos dentro de Proveedores',ausentismo:'Permisos dentro de RRHH',produccion:'Permisos dentro de Producción',cobranzas:'Permisos dentro de Cobranzas',patrimonial:'Permisos dentro de Situación Patrimonial'}[panel];
   let h='';
   if(panel==='proveedores'){
     h=`<div class="u-campos">
@@ -1006,7 +1006,7 @@ function bloqueCfg(panel,u,pans,admin){
       <div class="u-campo"><label>Usuario para menciones (@)</label><input type="text" data-c="usuario" value="${esc(c.usuario||'')}" placeholder="si se deja vacío, la parte del mail antes de @"></div></div>`;
   }
   if(panel==='ausentismo'){
-    h=`<label class="u-check" style="margin-bottom:10px"><input type="checkbox" data-c="admin" ${c.admin?'checked':''}> <b>Administrador de Ausentismo</b> (ve todo, hace todo y ve el registro de cambios)</label>
+    h=`<label class="u-check" style="margin-bottom:10px"><input type="checkbox" data-c="admin" ${c.admin?'checked':''}> <b>Administrador de RRHH</b> (ve todo, hace todo y ve el registro de cambios)</label>
       <div data-sub="aus-detalle" ${c.admin?'hidden':''}>
       <div class="u-lbl" style="margin:4px 0 6px">Solapas que ve</div><div class="u-grid">${AUS_TABS.map(([k,l])=>chk('data-aus-tab',k,l,(c.tabs||[]).includes(k))).join('')}</div>
       <div class="u-lbl" style="margin:12px 0 6px">Qué puede hacer</div><div class="u-grid">${AUS_ACC.map(([k,l])=>chk('data-aus-acc',k,l,!!(c.acciones||{})[k])).join('')}</div>
