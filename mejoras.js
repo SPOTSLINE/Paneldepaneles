@@ -20,12 +20,14 @@
 
   var NOMBRES = {
     ventas: 'Ventas', patrimonial: 'Situación patrimonial', eerr: 'Estado de resultados', proveedores: 'Proveedores',
-    cobranzas: 'Cobranzas', cheques: 'Intereses y gastos bancarios', cashflow: 'Cash Flow', produccion: 'Producción', ausentismo: 'Ausentismo'
+    cobranzas: 'Cobranzas', cheques: 'Intereses y gastos bancarios', cashflow: 'Cash Flow', produccion: 'Producción', ausentismo: 'Ausentismo',
+    planificacion: 'Planificación de Ventas'
   };
   var POR_RUTA = {
     'panel-ventas': 'ventas', 'panel-patrimonial': 'patrimonial', 'panel-estado-resultados': 'eerr',
     'panel-de-proveedores': 'proveedores', 'cobranzas': 'cobranzas', 'panel-de-cheques': 'cheques', 'panel-cash-flow': 'cashflow',
-    'panel-produccion': 'produccion', 'panel-de-ausentismo': 'ausentismo'
+    'panel-produccion': 'produccion', 'panel-de-ausentismo': 'ausentismo',
+    'panel-planificacion': 'planificacion'
   };
   /* Botones de mejora que traía cada panel: quedan ocultos para que haya uno solo, igual en todos */
   var VIEJOS = '#btn-pedidos,#ped-fab,#btnPedidos,#fabPedido,#btnMejoras,#bzBtn';
