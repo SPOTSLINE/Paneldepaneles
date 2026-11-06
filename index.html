@@ -501,7 +501,9 @@ const FETCHERS={
     const r=await leerFila(cfg,'Portal RRHH','resumen_v1');
     let aviso=null;
     try{ const av=await leerFila(cfg,'Portal RRHH','avisos_jefes_v1'); aviso=avisoJefeMio(av); }catch(e){}
-    return {aviso, kpis:[{val:r.pctMensualTotal.toFixed(1)+'%',lbl:'% mensual total'},{val:r.conLicenciaAusencia,lbl:'Con licencia / ausencia'},
+    let novedades=null;
+    try{ const {data,error}=await sb.rpc('rrhh_mis_novedades',{p_dias:45}); if(!error && data && data.n>0) novedades={n:data.n, personas:[...new Set((data.items||[]).filter(x=>x.nuevo).map(x=>String(x.nombre||'').toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase()).split(/\s+/).slice(0,2).join(' ')))].slice(0,6)}; }catch(e){}
+    return {aviso, novedades, kpis:[{val:r.pctMensualTotal.toFixed(1)+'%',lbl:'% mensual total'},{val:r.conLicenciaAusencia,lbl:'Con licencia / ausencia'},
       {val:r.totalPersonal,lbl:'Personal total'},{val:(r.llegadasTarde ?? '—'),lbl:'Llegadas tarde'}]};
   },
   async produccion(cfg){
@@ -711,9 +713,13 @@ function pintarKpis(p,data){
   const tap=tapado(p);
   const av=data.aviso;
   const avisoHtml=av?`<span class="aviso-jefe" role="link" tabindex="0" data-autorizar="${esc(p.url)}">🔔 Tenés ${av.n} solicitud${av.n===1?'':'es'} de vacaciones para autorizar<small>${esc((av.personas||[]).join(', '))}</small></span>`:'';
-  el.innerHTML=avisoHtml+(ks.length?ks.map(k=>tap?`<div class="fila"><b class="tapado">••••••</b>`:`<div class="fila"><b class="${/^-/.test(String(k.val))?'neg':''}">${k.val}</b><span>${esc(k.lbl)}</span></div>`).join(''):'<div class="nota">Sin datos elegidos para este recuadro.</div>');
+  const nv=data.novedades;
+  const novHtml=nv?`<span class="aviso-jefe" role="link" tabindex="0" data-novedades="${esc(p.url)}">📨 ${nv.n} novedad${nv.n===1?'':'es'} en pedidos de tu gente<small>${esc((nv.personas||[]).join(', '))}</small></span>`:'';
+  el.innerHTML=avisoHtml+novHtml+(ks.length?ks.map(k=>tap?`<div class="fila"><b class="tapado">••••••</b>`:`<div class="fila"><b class="${/^-/.test(String(k.val))?'neg':''}">${k.val}</b><span>${esc(k.lbl)}</span></div>`).join(''):'<div class="nota">Sin datos elegidos para este recuadro.</div>');
   const ab=el.querySelector('[data-autorizar]');
   if(ab){ const ir=e=>{ e.preventDefault(); e.stopPropagation(); location.href=ab.dataset.autorizar+'#autorizar'; }; ab.addEventListener('click',ir); ab.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') ir(e); }); }
+  const anv=el.querySelector('[data-novedades]');
+  if(anv){ const ir=e=>{ e.preventDefault(); e.stopPropagation(); location.href=anv.dataset.novedades+'#novedades'; }; anv.addEventListener('click',ir); anv.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' ') ir(e); }); }
   const badge=document.getElementById(`badge-${p.id}`); if(badge){ badge.textContent='En vivo'; badge.className='estado ok'; }
   const upd=document.getElementById(`updated-${p.id}`); if(upd) upd.textContent=(data.note?data.note+' · ':'')+'act. '+data.hora;
 }
