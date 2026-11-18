@@ -26,7 +26,7 @@
   var NOMBRES = {
     ventas: 'Ventas', patrimonial: 'Situación patrimonial', eerr: 'Estado de resultados', proveedores: 'Proveedores',
     cobranzas: 'Cobranzas', cheques: 'Intereses y gastos bancarios', cashflow: 'Cash Flow', produccion: 'Producción', ausentismo: 'Ausentismo',
-    planificacion: 'Planificación de Ventas'
+    planificacion: 'Planificación de Ventas', agentes: 'Agentes (Claude)'
   };
   var POR_RUTA = {
     'panel-ventas': 'ventas', 'panel-patrimonial': 'patrimonial', 'panel-estado-resultados': 'eerr',
