@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Conectar Claude · Paneles Spotsline</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111;color:#eee;font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
+.caja{background:#1c1c1c;border:1px solid #333;border-radius:12px;padding:28px;width:min(380px,90vw)}
+h1{font-size:19px;margin:0 0 4px;color:#f5c400}p{color:#aaa;margin:0 0 18px;font-size:13px;line-height:1.45}
+label{display:block;font-size:12px;color:#aaa;margin:12px 0 4px}
+input[type=email],input[type=password]{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee;font-size:15px}
+button{margin-top:16px;width:100%;padding:11px;border:0;border-radius:8px;background:#f5c400;color:#111;font-weight:700;font-size:15px;cursor:pointer}
+button.sec{background:transparent;border:1px solid #555;color:#ddd;font-weight:600}
+.err{background:#4a1515;color:#ffb4b4;padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:10px}
+.sep{border-top:1px solid #333;margin:20px 0 4px}.oculto{display:none}small{color:#777;font-size:12px}
+</style></head>
+<body><div class="caja">
+<h1>Conectar Claude</h1>
+<p>Entrá con tu usuario del Panel de Paneles para que Claude pueda consultar los datos de <b>tus</b> paneles. Solo lectura.</p>
+<div id="error" class="err oculto"></div>
+<div id="malo" class="err oculto">Este link no es válido. Volvé a Claude y tocá Conectar otra vez.</div>
+
+<form id="fSesion" method="post" class="oculto">
+  <button type="submit" id="btnSesion">Continuar</button>
+  <div class="sep"></div><small>¿Otro usuario? Completá abajo.</small>
+</form>
+
+<form id="fClave" method="post">
+  <label>Mail</label><input type="email" name="email" required autocomplete="username">
+  <label>Contraseña</label><input type="password" name="password" required autocomplete="current-password">
+  <button type="submit">Entrar</button>
+</form>
+</div>
+<script>
+(function () {
+  var SB_URL = 'https://fzylibnqqjznaddgpsjt.supabase.co';
+  var SB_KEY = 'sb_publishable_zHONcBODl6nbPiLS3TSrZw_D8MVJqeE';
+  var CLAVE_SESION = 'sb-fzylibnqqjznaddgpsjt-auth-token';
+  var CAMPOS = ['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'scope', 'resource'];
+  var q = new URLSearchParams(location.search);
+  var accion = q.get('accion') || '';
+  // Solo se mandan datos a funciones del Supabase del portal
+  if (accion.indexOf(SB_URL + '/functions/v1/') !== 0 || !q.get('code_challenge') || !q.get('redirect_uri')) {
+    document.getElementById('malo').classList.remove('oculto');
+    document.getElementById('fClave').classList.add('oculto');
+    return;
+  }
+  if (q.get('error')) { var e = document.getElementById('error'); e.textContent = q.get('error'); e.classList.remove('oculto'); }
+  ['fSesion', 'fClave'].forEach(function (id) {
+    var f = document.getElementById(id); f.action = accion;
+    CAMPOS.forEach(function (k) { if (q.get(k)) { var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = q.get(k); f.appendChild(i); } });
+  });
+
+  // Si ya tenés la sesión del portal abierta en este navegador, alcanza con "Continuar"
+  var s = null; try { s = JSON.parse(localStorage.getItem(CLAVE_SESION) || 'null'); } catch (e) {}
+  if (!s || !s.access_token) return;
+  var vigente = s.expires_at && s.expires_at * 1000 > Date.now() + 60000;
+  var listo = vigente ? Promise.resolve(s) : (s.refresh_token ? fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', headers: { apikey: SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: s.refresh_token })
+    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (n) {
+      if (!n || !n.access_token) return null;
+      var nuevo = Object.assign({}, s, n); try { localStorage.setItem(CLAVE_SESION, JSON.stringify(nuevo)); } catch (e) {}
+      return nuevo;
+    }).catch(function () { return null; }) : Promise.resolve(null));
+  listo.then(function (ses) {
+    if (!ses) return;
+    var f = document.getElementById('fSesion');
+    var t = document.createElement('input'); t.type = 'hidden'; t.name = 'sb_token'; t.value = ses.access_token; f.appendChild(t);
+    document.getElementById('btnSesion').textContent = 'Continuar como ' + ((ses.user && ses.user.email) || 'tu usuario del portal');
+    f.classList.remove('oculto');
+  });
+})();
+</script>
+</body></html>
